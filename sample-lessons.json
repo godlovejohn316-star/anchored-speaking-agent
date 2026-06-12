@@ -1,0 +1,28 @@
+[
+  {
+    "id": "lost-puppy",
+    "title": "The Lost Puppy",
+    "level": "A2",
+    "text": "Tom found a small puppy near the school gate. The puppy looked scared and hungry. Tom gave it some water and asked his teacher for help. Together, they found the owner. The owner thanked Tom for being kind.",
+    "keywords": ["puppy", "school gate", "scared", "hungry", "owner", "kind"],
+    "targetPatterns": ["I think...", "He should...", "The puppy was...", "Tom is kind because..."],
+    "discussionGoals": [
+      "Retell the story in simple past tense.",
+      "Explain why Tom was kind.",
+      "Use at least three anchor keywords."
+    ]
+  },
+  {
+    "id": "space-garden",
+    "title": "A Garden on Mars",
+    "level": "B1",
+    "text": "Mia is a young scientist living on Mars. She wants to grow vegetables inside a glass dome. Every morning, she checks the water, light, and temperature. Her dream is to make fresh food for everyone in the Mars station.",
+    "keywords": ["scientist", "Mars", "vegetables", "glass dome", "temperature", "fresh food"],
+    "targetPatterns": ["Mia wants to...", "She checks...", "Her dream is...", "If I lived on Mars..."],
+    "discussionGoals": [
+      "Describe Mia's daily work.",
+      "Talk about growing food in space.",
+      "Make one personal connection."
+    ]
+  }
+]
