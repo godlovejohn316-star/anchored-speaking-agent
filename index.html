@@ -63,12 +63,21 @@
           <div class="avatar" id="avatar">E</div>
           <div class="call-copy">
             <h3 id="callState">准备开始</h3>
-            <p id="callHint">选择文本和角色后，点击开始。浏览器会请求麦克风权限。</p>
+            <p id="callHint">选择文本和角色后，点击开始。AI 会围绕锚定文本提问，并朗读回复。</p>
+          </div>
+        </div>
+
+        <div class="answer-box">
+          <label class="field-label" for="childMessage">孩子回答</label>
+          <textarea id="childMessage" class="input answer-input" rows="4" placeholder="Type your answer in English..."></textarea>
+          <div class="answer-actions">
+            <button id="listenBtn" class="ghost-btn" type="button">浏览器听写</button>
+            <button id="sendBtn" class="primary-btn" type="button" disabled>发送回答</button>
           </div>
         </div>
 
         <div class="controls">
-          <button id="startBtn" class="primary-btn" type="button">开始语音练习</button>
+          <button id="startBtn" class="primary-btn" type="button">开始练习</button>
           <button id="stopBtn" class="danger-btn" type="button" disabled>结束并生成报告</button>
         </div>
 

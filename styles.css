@@ -65,6 +65,7 @@ button {
 .practice-top,
 .anchor-head,
 .controls,
+.answer-actions,
 .tabs {
   display: flex;
   align-items: center;
@@ -255,6 +256,23 @@ h3 {
   padding: 22px;
 }
 
+.answer-box {
+  margin-top: 14px;
+}
+
+.answer-input {
+  resize: vertical;
+}
+
+.answer-actions {
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+.answer-actions .primary-btn {
+  flex: 0 0 auto;
+}
+
 .avatar {
   display: grid;
   place-items: center;
@@ -400,6 +418,7 @@ h3 {
   }
 
   .controls,
+  .answer-actions,
   .brand-row,
   .practice-top {
     align-items: stretch;

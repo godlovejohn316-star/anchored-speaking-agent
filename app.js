@@ -4,24 +4,24 @@ const roles = [
     name: "Miss Emma",
     initial: "E",
     style: "warm, patient, encouraging, asks simple questions, gives gentle recasts",
-    label: "耐心外教",
-    description: "适合低龄和初学者，鼓励多说完整句。"
+    label: "Patient Tutor",
+    description: "Best for beginners. Encourages full-sentence answers."
   },
   {
     id: "story-guide",
     name: "Captain Leo",
     initial: "L",
     style: "playful story character, curious, dramatic but still focused on the anchor text",
-    label: "故事角色",
-    description: "适合故事文本，用角色扮演带动表达。"
+    label: "Story Role",
+    description: "Good for story-based role play and retelling."
   },
   {
     id: "interviewer",
     name: "Mr. Parker",
     initial: "P",
     style: "friendly interviewer, structured, asks follow-up questions and invites reasons",
-    label: "小面试官",
-    description: "适合观点表达、复述和考试型练习。"
+    label: "Interviewer",
+    description: "Good for opinions, reasons, and exam-style answers."
   }
 ];
 
@@ -29,12 +29,15 @@ const state = {
   lessons: [],
   selectedLesson: null,
   selectedRole: roles[0],
+  config: null,
   pc: null,
   dc: null,
   localStream: null,
   startedAt: null,
   timerId: null,
-  transcript: []
+  transcript: [],
+  active: false,
+  recognition: null
 };
 
 const els = {
@@ -50,12 +53,15 @@ const els = {
   roleName: document.querySelector("#roleName"),
   avatar: document.querySelector("#avatar"),
   childName: document.querySelector("#childName"),
+  answerBox: document.querySelector(".answer-box"),
+  childMessage: document.querySelector("#childMessage"),
+  listenBtn: document.querySelector("#listenBtn"),
+  sendBtn: document.querySelector("#sendBtn"),
   callState: document.querySelector("#callState"),
   callHint: document.querySelector("#callHint"),
   startBtn: document.querySelector("#startBtn"),
   stopBtn: document.querySelector("#stopBtn"),
   timer: document.querySelector("#timer"),
-  remoteAudio: document.querySelector("#remoteAudio"),
   transcript: document.querySelector("#transcript"),
   report: document.querySelector("#report"),
   tabs: document.querySelectorAll(".tab"),
@@ -70,7 +76,7 @@ function setCallState(title, hint) {
 }
 
 function setApiStatus(config) {
-  els.apiStatus.textContent = config.configured ? "API 已配置" : "未配置 API";
+  els.apiStatus.textContent = config.configured ? "API ready" : "API missing";
   els.apiStatus.className = `status-pill ${config.configured ? "ok" : "warn"}`;
 }
 
@@ -128,11 +134,11 @@ function renderRoles() {
 
 function addMessage(role, text) {
   if (!text || !text.trim()) return;
-  const normalizedRole = role === "assistant" ? state.selectedRole.name : role === "child" ? "孩子" : role;
+  const displayRole = role === "assistant" ? state.selectedRole.name : role === "child" ? "Child" : "System";
   state.transcript.push({ role, text: text.trim(), at: new Date().toISOString() });
   const template = document.querySelector("#messageTemplate");
   const node = template.content.cloneNode(true);
-  node.querySelector(".message-role").textContent = normalizedRole;
+  node.querySelector(".message-role").textContent = displayRole;
   node.querySelector(".message-text").textContent = text.trim();
   els.transcript.append(node);
   els.transcript.scrollTop = els.transcript.scrollHeight;
@@ -146,23 +152,96 @@ function updateTimer() {
   els.timer.textContent = `${mm}:${ss}`;
 }
 
+function speak(text) {
+  if (!("speechSynthesis" in window) || !text) return;
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = "en-US";
+  utterance.rate = 0.92;
+  window.speechSynthesis.speak(utterance);
+}
+
+async function askTutor(message) {
+  const lesson = currentLessonFromForm();
+  const res = await fetch("/api/chat", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      lesson,
+      role: state.selectedRole,
+      child: {
+        name: els.childName.value.trim() || "the learner"
+      },
+      transcript: state.transcript,
+      message
+    })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Tutor request failed.");
+  return data.reply;
+}
+
+async function startPractice() {
+  if (state.config?.mode === "realtime") {
+    return startRealtimePractice();
+  }
+  return startTextPractice();
+}
+
+async function startTextPractice() {
+  const lesson = currentLessonFromForm();
+  if (!lesson.text) {
+    setCallState("Missing anchor text", "Please enter a practice text first.");
+    return;
+  }
+
+  state.active = true;
+  state.transcript = [];
+  els.transcript.innerHTML = "";
+  els.report.className = "report-empty";
+  els.report.textContent = "Practice is running. A report will appear here after you finish.";
+  els.startBtn.disabled = true;
+  els.stopBtn.disabled = false;
+  els.sendBtn.disabled = false;
+  state.startedAt = Date.now();
+  state.timerId = setInterval(updateTimer, 1000);
+  updateTimer();
+  setCallState("Tutor is thinking", "The tutor will ask one question about the anchor text.");
+
+  try {
+    const reply = await askTutor("Please greet me and ask one easy question about the anchor text.");
+    addMessage("assistant", reply);
+    speak(reply);
+    setCallState("Tutor is ready", "Type or dictate an English answer, then send it.");
+  } catch (error) {
+    setCallState("Connection failed", error.message);
+    stopTimerOnly();
+    els.startBtn.disabled = false;
+    els.stopBtn.disabled = true;
+    els.sendBtn.disabled = true;
+  }
+}
+
 function getEphemeralKey(session) {
   return session?.client_secret?.value || session?.client_secret;
 }
 
-async function startPractice() {
+async function startRealtimePractice() {
   const lesson = currentLessonFromForm();
   if (!lesson.text) {
-    setCallState("缺少锚定文本", "请先输入一段练习文本。");
+    setCallState("Missing anchor text", "Please enter a practice text first.");
     return;
   }
 
-  els.startBtn.disabled = true;
-  els.stopBtn.disabled = false;
-  setCallState("正在连接外教", "请允许浏览器使用麦克风。");
-  els.report.textContent = "练习进行中，结束后生成报告。";
+  state.active = true;
   state.transcript = [];
   els.transcript.innerHTML = "";
+  els.report.className = "report-empty";
+  els.report.textContent = "Realtime practice is running. A report will appear here after you finish.";
+  els.startBtn.disabled = true;
+  els.stopBtn.disabled = false;
+  els.sendBtn.disabled = true;
+  setCallState("Connecting realtime tutor", "Please allow microphone access when the browser asks.");
 
   try {
     const sessionRes = await fetch("/api/realtime/session", {
@@ -178,14 +257,15 @@ async function startPractice() {
       })
     });
     const session = await sessionRes.json();
-    if (!sessionRes.ok) throw new Error(session.error || "创建实时会话失败。");
+    if (!sessionRes.ok) throw new Error(session.error || "Failed to create realtime session.");
 
     const ephemeralKey = getEphemeralKey(session);
     if (!ephemeralKey) throw new Error("Realtime session did not include a client secret.");
 
     state.pc = new RTCPeerConnection();
     state.pc.ontrack = (event) => {
-      els.remoteAudio.srcObject = event.streams[0];
+      const audio = document.querySelector("#remoteAudio");
+      audio.srcObject = event.streams[0];
     };
 
     state.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -195,8 +275,8 @@ async function startPractice() {
 
     state.dc = state.pc.createDataChannel("oai-events");
     state.dc.addEventListener("open", () => {
-      setCallState("外教已在线", "可以直接开口说英语。AI 会围绕文本追问和引导。");
-      addMessage("system", "Session started. Try: Can you ask me about the story?");
+      setCallState("Realtime tutor online", "Speak English directly. The tutor will stay anchored to the text.");
+      addMessage("system", "Realtime session started.");
       state.dc.send(JSON.stringify({
         type: "response.create",
         response: {
@@ -209,7 +289,7 @@ async function startPractice() {
     const offer = await state.pc.createOffer();
     await state.pc.setLocalDescription(offer);
 
-    const sdpRes = await fetch(`https://api.openai.com/v1/realtime?model=${encodeURIComponent(session.model)}`, {
+    const sdpRes = await fetch(session.realtimeUrl, {
       method: "POST",
       headers: {
         authorization: `Bearer ${ephemeralKey}`,
@@ -218,15 +298,15 @@ async function startPractice() {
       body: offer.sdp
     });
     const answerSdp = await sdpRes.text();
-    if (!sdpRes.ok) throw new Error(answerSdp || "WebRTC 连接失败。");
+    if (!sdpRes.ok) throw new Error(answerSdp || "Realtime WebRTC connection failed.");
 
     await state.pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
     state.startedAt = Date.now();
     state.timerId = setInterval(updateTimer, 1000);
     updateTimer();
   } catch (error) {
-    setCallState("连接失败", error.message);
-    await cleanupCall(false);
+    setCallState("Realtime failed", error.message);
+    await cleanupRealtime(false);
   }
 }
 
@@ -251,17 +331,13 @@ function handleRealtimeEvent(event) {
   }
 }
 
-async function cleanupCall(keepStopDisabled = true) {
-  if (state.timerId) clearInterval(state.timerId);
-  state.timerId = null;
-  state.startedAt = null;
-
+async function cleanupRealtime(keepStopDisabled = true) {
+  stopTimerOnly();
   if (state.dc) state.dc.close();
   if (state.pc) state.pc.close();
   if (state.localStream) {
     for (const track of state.localStream.getTracks()) track.stop();
   }
-
   state.dc = null;
   state.pc = null;
   state.localStream = null;
@@ -269,10 +345,45 @@ async function cleanupCall(keepStopDisabled = true) {
   els.stopBtn.disabled = keepStopDisabled;
 }
 
+async function sendAnswer() {
+  const text = els.childMessage.value.trim();
+  if (!text || !state.active) return;
+  els.childMessage.value = "";
+  els.sendBtn.disabled = true;
+  addMessage("child", text);
+  setCallState("Tutor is replying", "Please wait a moment.");
+
+  try {
+    const reply = await askTutor(text);
+    addMessage("assistant", reply);
+    speak(reply);
+    setCallState("Your turn", "Answer the tutor in English.");
+  } catch (error) {
+    addMessage("system", error.message);
+    setCallState("Reply failed", error.message);
+  } finally {
+    els.sendBtn.disabled = false;
+    els.childMessage.focus();
+  }
+}
+
+function stopTimerOnly() {
+  if (state.timerId) clearInterval(state.timerId);
+  state.timerId = null;
+  state.startedAt = null;
+  state.active = false;
+}
+
 async function stopPractice() {
   els.stopBtn.disabled = true;
-  setCallState("正在生成报告", "我在整理关键词覆盖、表达亮点和下一步练习句。");
-  await cleanupCall(true);
+  els.sendBtn.disabled = true;
+  if (state.config?.mode === "realtime") {
+    await cleanupRealtime(true);
+  } else {
+    stopTimerOnly();
+  }
+  window.speechSynthesis?.cancel();
+  setCallState("Generating report", "Checking keywords, strengths, and next practice sentences.");
 
   try {
     const lesson = currentLessonFromForm();
@@ -289,13 +400,15 @@ async function stopPractice() {
       })
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "报告生成失败。");
+    if (!res.ok) throw new Error(data.error || "Report request failed.");
     renderReport(data.report);
     switchTab("report");
-    setCallState("练习完成", "报告已经生成，可以换一个角色或文本继续练。");
+    setCallState("Practice complete", "The report is ready.");
   } catch (error) {
     els.report.textContent = error.message;
-    setCallState("报告失败", error.message);
+    setCallState("Report failed", error.message);
+  } finally {
+    els.startBtn.disabled = false;
   }
 }
 
@@ -303,13 +416,13 @@ function renderReport(report) {
   const list = (items) => (Array.isArray(items) ? items : []).map((item) => `<li>${escapeHtml(String(item))}</li>`).join("");
   els.report.className = "report-card";
   els.report.innerHTML = `
-    <h2>本次复盘</h2>
-    <p>${escapeHtml(report.summary || "练习已完成。")}</p>
-    <h3>亮点</h3>
+    <h2>Practice Report</h2>
+    <p>${escapeHtml(report.summary || "Practice completed.")}</p>
+    <h3>Strengths</h3>
     <ul>${list(report.strengths)}</ul>
-    <h3>下次改进</h3>
+    <h3>Improvements</h3>
     <ul>${list(report.improvements)}</ul>
-    <h3>复练句</h3>
+    <h3>Next Practice</h3>
     <ul>${list(report.nextPractice)}</ul>
   `;
 }
@@ -330,6 +443,27 @@ function switchTab(tabName) {
   els.reportView.classList.toggle("active", tabName === "report");
 }
 
+function startDictation() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    setCallState("Dictation unavailable", "This browser does not support built-in speech recognition.");
+    return;
+  }
+
+  const recognition = new SpeechRecognition();
+  recognition.lang = "en-US";
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
+  recognition.onstart = () => setCallState("Listening", "Speak one English answer.");
+  recognition.onresult = (event) => {
+    els.childMessage.value = event.results[0][0].transcript;
+    setCallState("Dictation complete", "Check the text, then send it.");
+  };
+  recognition.onerror = () => setCallState("Dictation failed", "Please type the answer instead.");
+  recognition.start();
+  state.recognition = recognition;
+}
+
 async function loadInitialData() {
   renderRoles();
   const [configRes, lessonsRes] = await Promise.all([
@@ -338,7 +472,17 @@ async function loadInitialData() {
   ]);
   const config = await configRes.json();
   const lessonsData = await lessonsRes.json();
+  state.config = config;
   setApiStatus(config);
+  if (config.mode === "realtime") {
+    els.answerBox.style.display = "none";
+    els.startBtn.textContent = "Start realtime speaking";
+    setCallState("Realtime mode", "Click start, allow microphone access, and speak with the tutor.");
+  } else {
+    els.answerBox.style.display = "";
+    els.startBtn.textContent = "Start practice";
+    setCallState("Text mode", "Type or dictate an English answer, then let the tutor reply.");
+  }
   state.lessons = lessonsData.lessons || [];
   els.lessonSelect.innerHTML = state.lessons.map((lesson) => `<option value="${lesson.id}">${lesson.title}</option>`).join("");
   renderLesson(state.lessons[0]);
@@ -352,6 +496,11 @@ els.lessonSelect.addEventListener("change", () => {
 els.keywordInput.addEventListener("input", renderKeywords);
 els.startBtn.addEventListener("click", startPractice);
 els.stopBtn.addEventListener("click", stopPractice);
+els.sendBtn.addEventListener("click", sendAnswer);
+els.listenBtn.addEventListener("click", startDictation);
+els.childMessage.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) sendAnswer();
+});
 els.editLessonBtn.addEventListener("click", () => {
   els.anchorText.focus();
   els.anchorText.select();
@@ -361,13 +510,15 @@ els.tabs.forEach((tab) => {
 });
 
 window.addEventListener("beforeunload", () => {
+  window.speechSynthesis?.cancel();
+  state.recognition?.abort();
   if (state.localStream) {
     for (const track of state.localStream.getTracks()) track.stop();
   }
 });
 
 loadInitialData().catch((error) => {
-  setCallState("初始化失败", error.message);
-  els.apiStatus.textContent = "服务异常";
+  setCallState("Initialization failed", error.message);
+  els.apiStatus.textContent = "Service error";
   els.apiStatus.className = "status-pill warn";
 });
