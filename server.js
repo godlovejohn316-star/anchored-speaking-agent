@@ -7,7 +7,9 @@ loadEnvFile(path.join(__dirname, ".env"));
 
 const PORT = Number(process.env.PORT || 4174);
 const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(__dirname, "data"));
-const PUBLIC_DIR = path.join(__dirname, "public");
+const PUBLIC_DIR = fs.existsSync(path.join(__dirname, "public", "index.html"))
+  ? path.join(__dirname, "public")
+  : __dirname;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 const REALTIME_MODEL = process.env.OPENAI_REALTIME_MODEL || "gpt-realtime-2";
 const TEXT_MODEL = process.env.OPENAI_TEXT_MODEL || "gpt-5-mini";
@@ -81,7 +83,9 @@ function appendJsonl(filename, record) {
 }
 
 function loadSampleLessons() {
-  const filePath = path.join(__dirname, "data", "sample-lessons.json");
+  const filePath = fs.existsSync(path.join(__dirname, "data", "sample-lessons.json"))
+    ? path.join(__dirname, "data", "sample-lessons.json")
+    : path.join(__dirname, "sample-lessons.json");
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
 }
 
