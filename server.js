@@ -10,10 +10,15 @@ const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(__dirname, "data
 const PUBLIC_DIR = fs.existsSync(path.join(__dirname, "public", "index.html"))
   ? path.join(__dirname, "public")
   : __dirname;
+const AI_PROVIDER = process.env.AI_PROVIDER || "dashscope";
+const DASHSCOPE_API_KEY = process.env.DASHSCOPE_API_KEY || "";
+const DASHSCOPE_API_BASE = process.env.DASHSCOPE_API_BASE || "https://dashscope.aliyuncs.com/compatible-mode/v1";
+const DASHSCOPE_MODEL = process.env.DASHSCOPE_MODEL || "qwen-plus";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
-const REALTIME_MODEL = process.env.OPENAI_REALTIME_MODEL || "gpt-realtime-2";
-const TEXT_MODEL = process.env.OPENAI_TEXT_MODEL || "gpt-5-mini";
-const VOICE = process.env.OPENAI_VOICE || "alloy";
+const OPENAI_API_BASE = (process.env.OPENAI_API_BASE || "https://api.openai.com/v1").replace(/\/$/, "");
+const OPENAI_REALTIME_MODEL = process.env.OPENAI_REALTIME_MODEL || "gpt-realtime-2";
+const OPENAI_TEXT_MODEL = process.env.OPENAI_TEXT_MODEL || "gpt-4o-mini";
+const OPENAI_VOICE = process.env.OPENAI_VOICE || "alloy";
 const MAX_MINUTES = Number(process.env.PRACTICE_MAX_MINUTES || 8);
 
 const mimeTypes = {
@@ -139,7 +144,7 @@ function buildTutorInstructions(payload) {
 
 async function createRealtimeSession(payload) {
   if (!OPENAI_API_KEY) {
-    const error = new Error("OPENAI_API_KEY is not configured.");
+    const error = new Error("OPENAI_API_KEY is not configured for realtime mode.");
     error.status = 500;
     throw error;
   }
@@ -147,7 +152,7 @@ async function createRealtimeSession(payload) {
   const instructions = buildTutorInstructions(payload);
   const safetyIdentifier = createSafetyIdentifier(payload?.child?.id || payload?.child?.name || "anonymous");
 
-  const response = await fetch("https://api.openai.com/v1/realtime/sessions", {
+  const response = await fetch(`${OPENAI_API_BASE}/realtime/sessions`, {
     method: "POST",
     headers: {
       authorization: `Bearer ${OPENAI_API_KEY}`,
@@ -155,8 +160,8 @@ async function createRealtimeSession(payload) {
       "OpenAI-Safety-Identifier": safetyIdentifier
     },
     body: JSON.stringify({
-      model: REALTIME_MODEL,
-      voice: payload.voice || VOICE,
+      model: OPENAI_REALTIME_MODEL,
+      voice: payload.voice || OPENAI_VOICE,
       instructions,
       modalities: ["audio", "text"],
       input_audio_transcription: {
@@ -182,7 +187,7 @@ async function createRealtimeSession(payload) {
   appendJsonl("sessions.jsonl", {
     id: data.id,
     createdAt: new Date().toISOString(),
-    model: REALTIME_MODEL,
+    model: OPENAI_REALTIME_MODEL,
     lessonTitle: payload?.lesson?.title,
     roleName: payload?.role?.name,
     safetyIdentifier
@@ -190,9 +195,77 @@ async function createRealtimeSession(payload) {
 
   return {
     id: data.id,
-    model: REALTIME_MODEL,
-    voice: payload.voice || VOICE,
+    model: OPENAI_REALTIME_MODEL,
+    voice: payload.voice || OPENAI_VOICE,
+    realtimeUrl: `${OPENAI_API_BASE}/realtime?model=${encodeURIComponent(OPENAI_REALTIME_MODEL)}`,
     client_secret: data.client_secret
+  };
+}
+
+async function callDomesticChat(payload) {
+  if (AI_PROVIDER !== "dashscope") {
+    const error = new Error(`Unsupported AI_PROVIDER: ${AI_PROVIDER}`);
+    error.status = 500;
+    throw error;
+  }
+
+  if (!DASHSCOPE_API_KEY) {
+    const error = new Error("DASHSCOPE_API_KEY is not configured.");
+    error.status = 500;
+    throw error;
+  }
+
+  const system = buildTutorInstructions(payload);
+  const transcript = Array.isArray(payload.transcript) ? payload.transcript.slice(-12) : [];
+  const messages = [
+    { role: "system", content: system },
+    ...transcript
+      .filter((item) => item.text)
+      .map((item) => ({
+        role: item.role === "assistant" ? "assistant" : "user",
+        content: item.text
+      })),
+    { role: "user", content: cleanString(payload.message, "Please ask me a question about the text.").slice(0, 1200) }
+  ];
+
+  const response = await fetch(`${DASHSCOPE_API_BASE.replace(/\/$/, "")}/chat/completions`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${DASHSCOPE_API_KEY}`,
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      model: DASHSCOPE_MODEL,
+      messages,
+      temperature: 0.7,
+      max_tokens: 450
+    })
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(data?.error?.message || "Domestic model request failed.");
+    error.status = response.status;
+    error.details = data;
+    throw error;
+  }
+
+  const text = data?.choices?.[0]?.message?.content || "";
+  appendJsonl("chat.jsonl", {
+    createdAt: new Date().toISOString(),
+    provider: AI_PROVIDER,
+    model: DASHSCOPE_MODEL,
+    lessonTitle: payload?.lesson?.title,
+    roleName: payload?.role?.name,
+    childName: payload?.child?.name,
+    message: payload.message,
+    reply: text
+  });
+
+  return {
+    reply: text,
+    provider: AI_PROVIDER,
+    model: DASHSCOPE_MODEL
   };
 }
 
@@ -227,18 +300,17 @@ function fallbackReport(payload) {
 }
 
 async function generateReport(payload) {
-  if (!OPENAI_API_KEY) return fallbackReport(payload);
+  if (!DASHSCOPE_API_KEY) return fallbackReport(payload);
 
-  const response = await fetch("https://api.openai.com/v1/responses", {
+  const response = await fetch(`${DASHSCOPE_API_BASE.replace(/\/$/, "")}/chat/completions`, {
     method: "POST",
     headers: {
-      authorization: `Bearer ${OPENAI_API_KEY}`,
-      "content-type": "application/json",
-      "OpenAI-Safety-Identifier": createSafetyIdentifier(payload?.child?.id || payload?.child?.name || "anonymous")
+      authorization: `Bearer ${DASHSCOPE_API_KEY}`,
+      "content-type": "application/json"
     },
     body: JSON.stringify({
-      model: TEXT_MODEL,
-      input: [
+      model: DASHSCOPE_MODEL,
+      messages: [
         {
           role: "system",
           content: "You are a child-friendly English speaking coach. Return strict JSON only."
@@ -260,20 +332,16 @@ async function generateReport(payload) {
           })
         }
       ],
-      text: {
-        format: {
-          type: "json_object"
-        }
-      }
+      temperature: 0.2
     })
   });
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) return fallbackReport(payload);
 
-  const outputText = data.output_text || data.output?.flatMap((item) => item.content || []).map((part) => part.text || "").join("") || "";
+  const outputText = data?.choices?.[0]?.message?.content || "";
   try {
-    return JSON.parse(outputText);
+    return JSON.parse(outputText.replace(/^```json\s*/i, "").replace(/```$/i, "").trim());
   } catch {
     return fallbackReport(payload);
   }
@@ -304,11 +372,13 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
 
     if (req.method === "GET" && url.pathname === "/api/health") {
+      const realtimeMode = AI_PROVIDER === "openai-realtime";
       return sendJson(res, 200, {
         ok: true,
         service: "anchored-speaking-agent",
-        realtimeConfigured: Boolean(OPENAI_API_KEY),
-        model: REALTIME_MODEL
+        configured: realtimeMode ? Boolean(OPENAI_API_KEY) : Boolean(DASHSCOPE_API_KEY),
+        provider: AI_PROVIDER,
+        model: realtimeMode ? OPENAI_REALTIME_MODEL : DASHSCOPE_MODEL
       });
     }
 
@@ -317,11 +387,13 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === "GET" && url.pathname === "/api/config") {
+      const realtimeMode = AI_PROVIDER === "openai-realtime";
       return sendJson(res, 200, {
-        realtimeModel: REALTIME_MODEL,
-        defaultVoice: VOICE,
+        provider: AI_PROVIDER,
+        model: realtimeMode ? OPENAI_REALTIME_MODEL : DASHSCOPE_MODEL,
         maxMinutes: MAX_MINUTES,
-        configured: Boolean(OPENAI_API_KEY)
+        configured: realtimeMode ? Boolean(OPENAI_API_KEY) : Boolean(DASHSCOPE_API_KEY),
+        mode: realtimeMode ? "realtime" : "domestic-text"
       });
     }
 
@@ -329,6 +401,12 @@ const server = http.createServer(async (req, res) => {
       const payload = await readBody(req);
       const session = await createRealtimeSession(payload);
       return sendJson(res, 200, session);
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/chat") {
+      const payload = await readBody(req);
+      const reply = await callDomesticChat(payload);
+      return sendJson(res, 200, reply);
     }
 
     if (req.method === "POST" && url.pathname === "/api/report") {
