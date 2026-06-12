@@ -1,0 +1,13 @@
+{
+  "name": "anchored-speaking-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Anchored text speaking practice web agent for child-friendly AI tutor conversations.",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
