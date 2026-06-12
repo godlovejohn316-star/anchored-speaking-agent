@@ -2,7 +2,7 @@ services:
   - type: web
     name: anchored-speaking-agent
     runtime: node
-    plan: starter
+    plan: free
     buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /api/health
@@ -10,7 +10,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: DATA_DIR
-        value: /var/data
+        value: /tmp/anchored-speaking-agent
       - key: OPENAI_API_KEY
         sync: false
       - key: OPENAI_REALTIME_MODEL
@@ -21,7 +21,3 @@ services:
         value: alloy
       - key: PRACTICE_MAX_MINUTES
         value: 8
-    disk:
-      name: anchored-speaking-agent-data
-      mountPath: /var/data
-      sizeGB: 1
