@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Anchored Speaking Agent</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="lesson-panel">
+        <div class="brand-row">
+          <div>
+            <p class="eyebrow">Anchored Speaking</p>
+            <h1>锚定文本口语练习</h1>
+          </div>
+          <span id="apiStatus" class="status-pill">检查中</span>
+        </div>
+
+        <label class="field-label" for="lessonSelect">练习文本</label>
+        <select id="lessonSelect" class="input"></select>
+
+        <div class="anchor-box">
+          <div class="anchor-head">
+            <div>
+              <h2 id="lessonTitle">Loading...</h2>
+              <span id="lessonLevel" class="level-pill"></span>
+            </div>
+            <button id="editLessonBtn" class="ghost-btn" type="button">编辑文本</button>
+          </div>
+          <textarea id="anchorText" class="anchor-text" rows="9"></textarea>
+        </div>
+
+        <div class="keyword-section">
+          <label class="field-label" for="keywordInput">关键词</label>
+          <input id="keywordInput" class="input" placeholder="puppy, school gate, owner" />
+          <div id="keywordChips" class="chips"></div>
+        </div>
+
+        <div class="patterns">
+          <label class="field-label" for="patternsInput">目标句型</label>
+          <textarea id="patternsInput" class="input small-area" rows="3"></textarea>
+        </div>
+      </section>
+
+      <section class="practice-panel">
+        <div class="practice-top">
+          <div>
+            <p class="eyebrow">Live Tutor</p>
+            <h2 id="roleName">Miss Emma</h2>
+          </div>
+          <div id="timer" class="timer">00:00</div>
+        </div>
+
+        <div class="role-grid" id="roleGrid"></div>
+
+        <div class="child-row">
+          <label class="field-label" for="childName">孩子名字</label>
+          <input id="childName" class="input" value="Alex" maxlength="40" />
+        </div>
+
+        <div class="call-zone">
+          <div class="avatar" id="avatar">E</div>
+          <div class="call-copy">
+            <h3 id="callState">准备开始</h3>
+            <p id="callHint">选择文本和角色后，点击开始。浏览器会请求麦克风权限。</p>
+          </div>
+        </div>
+
+        <div class="controls">
+          <button id="startBtn" class="primary-btn" type="button">开始语音练习</button>
+          <button id="stopBtn" class="danger-btn" type="button" disabled>结束并生成报告</button>
+        </div>
+
+        <audio id="remoteAudio" autoplay></audio>
+      </section>
+
+      <section class="insight-panel">
+        <div class="tabs">
+          <button class="tab active" data-tab="transcript" type="button">实时记录</button>
+          <button class="tab" data-tab="report" type="button">练习报告</button>
+        </div>
+
+        <div id="transcriptView" class="tab-view active">
+          <div id="transcript" class="transcript"></div>
+        </div>
+
+        <div id="reportView" class="tab-view">
+          <div id="report" class="report-empty">完成一次练习后，这里会生成复盘建议。</div>
+        </div>
+      </section>
+    </main>
+
+    <template id="messageTemplate">
+      <article class="message">
+        <div class="message-role"></div>
+        <p class="message-text"></p>
+      </article>
+    </template>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
