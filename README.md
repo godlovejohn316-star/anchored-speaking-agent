@@ -21,6 +21,7 @@ OPENAI_API_KEY=your proxy sk-... token
 OPENAI_API_BASE=https://api.zyaihub.com/v1
 OPENAI_REALTIME_MODEL=the realtime model confirmed by your provider
 OPENAI_REALTIME_TRANSPORT=websocket
+OPENAI_REALTIME_WS_URL=
 OPENAI_REALTIME_SESSION_MODE=sdp-proxy
 OPENAI_TEXT_MODEL=gpt-4o
 OPENAI_VOICE=alloy
@@ -38,6 +39,12 @@ If your provider supports OpenAI WebRTC SDP instead, you can set:
 ```text
 OPENAI_REALTIME_TRANSPORT=webrtc
 OPENAI_REALTIME_SESSION_MODE=sessions or sdp-proxy
+```
+
+If the provider's WebSocket endpoint does not accept `?model=...`, set an exact URL:
+
+```text
+OPENAI_REALTIME_WS_URL=wss://api.zyaihub.com/v1/realtime
 ```
 
 If the provider supports OpenAI voice names, users can switch voices in the page before starting a session.

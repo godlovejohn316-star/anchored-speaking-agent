@@ -537,7 +537,9 @@ function handleRealtimeWebSocketEvent(rawData) {
     setCallState("Realtime failed", message);
   }
   if (data.type === "proxy.close") {
-    addMessage("system", `Realtime proxy closed: ${data.reason || data.code || ""}`);
+    const detail = [data.code, data.reason].filter(Boolean).join(" ");
+    addMessage("system", `Realtime proxy closed: ${detail}`);
+    setCallState("Realtime closed", detail || "The realtime connection closed.");
   }
 }
 
