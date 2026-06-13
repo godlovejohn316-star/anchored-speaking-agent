@@ -284,7 +284,7 @@ async function startRealtimePractice() {
     state.dc.addEventListener("open", () => {
       setCallState("Realtime tutor online", "Speak English directly. The tutor will stay anchored to the text.");
       addMessage("system", "Realtime session started.");
-      if (session.sessionConfig) {
+      if (session.sessionConfig && session.sdpProxyUrl !== "/api/realtime/call") {
         state.dc.send(JSON.stringify({
           type: "session.update",
           session: {
@@ -312,10 +312,17 @@ async function startRealtimePractice() {
       const sdpRes = await fetch(session.sdpProxyUrl, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ sdp: offer.sdp })
+        body: JSON.stringify({
+          sdp: offer.sdp,
+          sessionConfig: session.sessionConfig,
+          child: {
+            id: els.childName.value.trim().toLowerCase() || "anonymous",
+            name: els.childName.value.trim() || "the learner"
+          }
+        })
       });
       const sdpData = await sdpRes.json().catch(() => ({}));
-      if (!sdpRes.ok) throw new Error(sdpData.error || "Realtime WebRTC connection failed.");
+      if (!sdpRes.ok) throw new Error(sdpData.error || "Realtime WebRTC call exchange failed.");
       answerSdp = sdpData.sdp;
     } else {
       const sdpRes = await fetch(session.realtimeUrl, {

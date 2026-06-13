@@ -24,12 +24,12 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 const OPENAI_API_BASE = (process.env.OPENAI_API_BASE || "https://api.openai.com/v1").replace(/\/$/, "");
 const OPENAI_REALTIME_MODEL = process.env.OPENAI_REALTIME_MODEL || "gpt-realtime-2";
 const OPENAI_TEXT_MODEL = process.env.OPENAI_TEXT_MODEL || "gpt-4o-mini";
-const OPENAI_VOICE = process.env.OPENAI_VOICE || "alloy";
-const OPENAI_REALTIME_SESSION_MODE = process.env.OPENAI_REALTIME_SESSION_MODE || "sessions";
+const OPENAI_VOICE = process.env.OPENAI_VOICE || "marin";
+const OPENAI_REALTIME_SESSION_MODE = process.env.OPENAI_REALTIME_SESSION_MODE || "calls";
 const OPENAI_REALTIME_TRANSPORT = process.env.OPENAI_REALTIME_TRANSPORT || "webrtc";
 const OPENAI_REALTIME_WS_URL = process.env.OPENAI_REALTIME_WS_URL || "";
 const MAX_MINUTES = Number(process.env.PRACTICE_MAX_MINUTES || 8);
-const REALTIME_VOICES = ["alloy", "verse", "aria", "coral", "sage", "shimmer"];
+const REALTIME_VOICES = ["marin", "alloy", "verse", "aria", "coral", "sage", "shimmer"];
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -163,18 +163,26 @@ async function createRealtimeSession(payload) {
   const safetyIdentifier = createSafetyIdentifier(payload?.child?.id || payload?.child?.name || "anonymous");
   const requestedVoice = REALTIME_VOICES.includes(payload.voice) ? payload.voice : OPENAI_VOICE;
   const sessionConfig = {
+    type: "realtime",
+    model: OPENAI_REALTIME_MODEL,
     instructions,
-    voice: requestedVoice,
-    input_audio_transcription: {
-      model: "gpt-4o-mini-transcribe"
-    },
-    turn_detection: {
-      type: "server_vad",
-      threshold: 0.5,
-      prefix_padding_ms: 300,
-      silence_duration_ms: 650
+    audio: {
+      output: {
+        voice: requestedVoice
+      }
     }
   };
+
+  if (OPENAI_REALTIME_SESSION_MODE === "calls") {
+    console.log(`Creating realtime call config for model=${OPENAI_REALTIME_MODEL}, voice=${requestedVoice}`);
+    return {
+      id: `call-${Date.now()}`,
+      model: OPENAI_REALTIME_MODEL,
+      voice: requestedVoice,
+      sdpProxyUrl: "/api/realtime/call",
+      sessionConfig
+    };
+  }
 
   if (OPENAI_REALTIME_SESSION_MODE === "sdp-proxy") {
     appendJsonl("sessions.jsonl", {
@@ -196,21 +204,14 @@ async function createRealtimeSession(payload) {
     };
   }
 
-  const response = await fetch(`${OPENAI_API_BASE}/realtime/sessions`, {
+  const response = await fetch(`${OPENAI_API_BASE}/realtime/client_secrets`, {
     method: "POST",
     headers: {
       authorization: `Bearer ${OPENAI_API_KEY}`,
       "content-type": "application/json",
       "OpenAI-Safety-Identifier": safetyIdentifier
     },
-    body: JSON.stringify({
-      model: OPENAI_REALTIME_MODEL,
-      voice: requestedVoice,
-      instructions,
-      modalities: ["audio", "text"],
-      input_audio_transcription: sessionConfig.input_audio_transcription,
-      turn_detection: sessionConfig.turn_detection
-    })
+    body: JSON.stringify({ session: sessionConfig })
   });
 
   const data = await response.json().catch(() => ({}));
@@ -234,9 +235,55 @@ async function createRealtimeSession(payload) {
     id: data.id,
     model: OPENAI_REALTIME_MODEL,
     voice: requestedVoice,
-    realtimeUrl: `${OPENAI_API_BASE}/realtime?model=${encodeURIComponent(OPENAI_REALTIME_MODEL)}`,
-    client_secret: data.client_secret
+    realtimeUrl: `${OPENAI_API_BASE}/realtime/calls`,
+    client_secret: data.value || data.client_secret?.value || data.client_secret
   };
+}
+
+async function exchangeRealtimeCall(payload) {
+  if (!OPENAI_API_KEY) {
+    const error = new Error("OPENAI_API_KEY is not configured for realtime mode.");
+    error.status = 500;
+    throw error;
+  }
+
+  const offerSdp = cleanString(payload.sdp);
+  if (!offerSdp) {
+    const error = new Error("Missing SDP offer.");
+    error.status = 400;
+    throw error;
+  }
+
+  const sessionConfig = payload.sessionConfig || {
+    type: "realtime",
+    model: OPENAI_REALTIME_MODEL,
+    audio: { output: { voice: OPENAI_VOICE } }
+  };
+
+  const fd = new FormData();
+  fd.set("sdp", offerSdp);
+  fd.set("session", JSON.stringify(sessionConfig));
+
+  console.log(`Exchanging realtime call SDP with OpenAI model=${sessionConfig.model || OPENAI_REALTIME_MODEL}`);
+  const response = await fetch(`${OPENAI_API_BASE}/realtime/calls`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${OPENAI_API_KEY}`,
+      "OpenAI-Safety-Identifier": createSafetyIdentifier(payload?.child?.id || payload?.child?.name || "anonymous")
+    },
+    body: fd
+  });
+
+  const answerSdp = await response.text();
+  if (!response.ok) {
+    console.error(`Realtime call exchange failed: ${response.status} ${answerSdp}`);
+    const error = new Error(answerSdp || "Realtime call exchange failed.");
+    error.status = response.status;
+    throw error;
+  }
+
+  console.log("Realtime call SDP exchange succeeded.");
+  return { sdp: answerSdp };
 }
 
 async function exchangeRealtimeSdp(payload) {
@@ -509,7 +556,7 @@ const server = http.createServer(async (req, res) => {
         realtimeSessionMode: OPENAI_REALTIME_SESSION_MODE,
         realtimeTransport: OPENAI_REALTIME_TRANSPORT,
         realtimeWsUrlConfigured: Boolean(OPENAI_REALTIME_WS_URL),
-        appVersion: "openai-webrtc-realtime-20260613-2"
+        appVersion: "openai-calls-realtime-20260613-1"
       });
     }
 

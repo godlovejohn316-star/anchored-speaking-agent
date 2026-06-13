@@ -22,10 +22,10 @@ services:
       - key: OPENAI_REALTIME_TRANSPORT
         value: webrtc
       - key: OPENAI_REALTIME_SESSION_MODE
-        value: sessions
+        value: calls
       - key: OPENAI_TEXT_MODEL
         value: gpt-4o-mini
       - key: OPENAI_VOICE
-        value: alloy
+        value: marin
       - key: PRACTICE_MAX_MINUTES
         value: 8
