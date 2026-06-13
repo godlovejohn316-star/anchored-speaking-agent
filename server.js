@@ -2,6 +2,7 @@ const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
+const WebSocket = require("ws");
 
 loadEnvFile(path.join(__dirname, ".env"));
 
@@ -20,6 +21,7 @@ const OPENAI_REALTIME_MODEL = process.env.OPENAI_REALTIME_MODEL || "gpt-realtime
 const OPENAI_TEXT_MODEL = process.env.OPENAI_TEXT_MODEL || "gpt-4o-mini";
 const OPENAI_VOICE = process.env.OPENAI_VOICE || "alloy";
 const OPENAI_REALTIME_SESSION_MODE = process.env.OPENAI_REALTIME_SESSION_MODE || "sdp-proxy";
+const OPENAI_REALTIME_TRANSPORT = process.env.OPENAI_REALTIME_TRANSPORT || "websocket";
 const MAX_MINUTES = Number(process.env.PRACTICE_MAX_MINUTES || 8);
 const REALTIME_VOICES = ["alloy", "verse", "aria", "coral", "sage", "shimmer"];
 
@@ -498,7 +500,8 @@ const server = http.createServer(async (req, res) => {
         mode: realtimeMode ? "realtime" : "domestic-text",
         voices: REALTIME_VOICES,
         defaultVoice: OPENAI_VOICE,
-        realtimeSessionMode: OPENAI_REALTIME_SESSION_MODE
+        realtimeSessionMode: OPENAI_REALTIME_SESSION_MODE,
+        realtimeTransport: OPENAI_REALTIME_TRANSPORT
       });
     }
 
@@ -555,4 +558,64 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`Anchored Speaking Agent running at http://localhost:${PORT}`);
+});
+
+const wss = new WebSocket.Server({ noServer: true });
+
+server.on("upgrade", (req, socket, head) => {
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  if (url.pathname !== "/api/realtime/ws") {
+    socket.destroy();
+    return;
+  }
+
+  wss.handleUpgrade(req, socket, head, (clientWs) => {
+    wss.emit("connection", clientWs, req);
+  });
+});
+
+wss.on("connection", (clientWs) => {
+  if (!OPENAI_API_KEY) {
+    clientWs.close(1011, "OPENAI_API_KEY is not configured.");
+    return;
+  }
+
+  const upstreamUrl = `${OPENAI_API_BASE.replace(/^http/, "ws")}/realtime?model=${encodeURIComponent(OPENAI_REALTIME_MODEL)}`;
+  const upstreamWs = new WebSocket(upstreamUrl, {
+    headers: {
+      authorization: `Bearer ${OPENAI_API_KEY}`,
+      "OpenAI-Beta": "realtime=v1"
+    }
+  });
+
+  upstreamWs.on("open", () => {
+    clientWs.send(JSON.stringify({ type: "proxy.open", model: OPENAI_REALTIME_MODEL }));
+  });
+
+  upstreamWs.on("message", (data) => {
+    if (clientWs.readyState === WebSocket.OPEN) clientWs.send(data);
+  });
+
+  upstreamWs.on("error", (error) => {
+    if (clientWs.readyState === WebSocket.OPEN) {
+      clientWs.send(JSON.stringify({ type: "proxy.error", error: { message: error.message } }));
+    }
+  });
+
+  upstreamWs.on("close", (code, reason) => {
+    if (clientWs.readyState === WebSocket.OPEN) {
+      clientWs.send(JSON.stringify({ type: "proxy.close", code, reason: reason.toString() }));
+      clientWs.close();
+    }
+  });
+
+  clientWs.on("message", (data) => {
+    if (upstreamWs.readyState === WebSocket.OPEN) upstreamWs.send(data);
+  });
+
+  clientWs.on("close", () => {
+    if (upstreamWs.readyState === WebSocket.OPEN || upstreamWs.readyState === WebSocket.CONNECTING) {
+      upstreamWs.close();
+    }
+  });
 });

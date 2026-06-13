@@ -32,7 +32,12 @@ const state = {
   config: null,
   pc: null,
   dc: null,
+  ws: null,
   localStream: null,
+  audioContext: null,
+  audioSource: null,
+  audioProcessor: null,
+  playbackTime: 0,
   startedAt: null,
   timerId: null,
   transcript: [],
@@ -184,6 +189,9 @@ async function askTutor(message) {
 
 async function startPractice() {
   if (state.config?.mode === "realtime") {
+    if (state.config?.realtimeTransport === "websocket") {
+      return startRealtimeWebSocketPractice();
+    }
     return startRealtimePractice();
   }
   return startTextPractice();
@@ -370,6 +378,187 @@ async function cleanupRealtime(keepStopDisabled = true) {
   els.stopBtn.disabled = keepStopDisabled;
 }
 
+function base64FromArrayBuffer(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  for (let i = 0; i < bytes.byteLength; i += 1) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
+function arrayBufferFromBase64(base64) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes.buffer;
+}
+
+function convertFloatToPcm16(float32Array, inputSampleRate, outputSampleRate = 24000) {
+  const ratio = inputSampleRate / outputSampleRate;
+  const outputLength = Math.floor(float32Array.length / ratio);
+  const pcm = new Int16Array(outputLength);
+  for (let i = 0; i < outputLength; i += 1) {
+    const sample = float32Array[Math.floor(i * ratio)] || 0;
+    const clipped = Math.max(-1, Math.min(1, sample));
+    pcm[i] = clipped < 0 ? clipped * 0x8000 : clipped * 0x7fff;
+  }
+  return pcm;
+}
+
+function playPcm16Base64(base64) {
+  if (!state.audioContext) return;
+  const pcm = new Int16Array(arrayBufferFromBase64(base64));
+  const floatData = new Float32Array(pcm.length);
+  for (let i = 0; i < pcm.length; i += 1) floatData[i] = pcm[i] / 0x8000;
+
+  const buffer = state.audioContext.createBuffer(1, floatData.length, 24000);
+  buffer.copyToChannel(floatData, 0);
+  const source = state.audioContext.createBufferSource();
+  source.buffer = buffer;
+  source.connect(state.audioContext.destination);
+
+  const now = state.audioContext.currentTime;
+  state.playbackTime = Math.max(state.playbackTime, now);
+  source.start(state.playbackTime);
+  state.playbackTime += buffer.duration;
+}
+
+async function startRealtimeWebSocketPractice() {
+  const lesson = currentLessonFromForm();
+  if (!lesson.text) {
+    setCallState("Missing anchor text", "Please enter a practice text first.");
+    return;
+  }
+
+  state.active = true;
+  state.transcript = [];
+  els.transcript.innerHTML = "";
+  els.report.className = "report-empty";
+  els.report.textContent = "Realtime WebSocket practice is running. A report will appear here after you finish.";
+  els.startBtn.disabled = true;
+  els.stopBtn.disabled = false;
+  els.sendBtn.disabled = true;
+  setCallState("Connecting realtime tutor", "Please allow microphone access when the browser asks.");
+
+  try {
+    const sessionRes = await fetch("/api/realtime/session", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        lesson,
+        role: state.selectedRole,
+        voice: els.voiceSelect.value,
+        child: {
+          id: els.childName.value.trim().toLowerCase() || "anonymous",
+          name: els.childName.value.trim() || "the learner"
+        }
+      })
+    });
+    const session = await sessionRes.json();
+    if (!sessionRes.ok) throw new Error(session.error || "Failed to create realtime session.");
+
+    const wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
+    state.ws = new WebSocket(`${wsProtocol}://${window.location.host}/api/realtime/ws`);
+
+    state.ws.addEventListener("open", async () => {
+      state.audioContext = new AudioContext();
+      state.playbackTime = state.audioContext.currentTime;
+
+      state.ws.send(JSON.stringify({
+        type: "session.update",
+        session: {
+          modalities: ["audio", "text"],
+          instructions: session.sessionConfig.instructions,
+          voice: session.sessionConfig.voice,
+          input_audio_format: "pcm16",
+          output_audio_format: "pcm16",
+          input_audio_transcription: session.sessionConfig.input_audio_transcription,
+          turn_detection: session.sessionConfig.turn_detection
+        }
+      }));
+
+      state.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      state.audioSource = state.audioContext.createMediaStreamSource(state.localStream);
+      state.audioProcessor = state.audioContext.createScriptProcessor(4096, 1, 1);
+      state.audioProcessor.onaudioprocess = (event) => {
+        if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+        const input = event.inputBuffer.getChannelData(0);
+        const pcm = convertFloatToPcm16(input, state.audioContext.sampleRate, 24000);
+        state.ws.send(JSON.stringify({
+          type: "input_audio_buffer.append",
+          audio: base64FromArrayBuffer(pcm.buffer)
+        }));
+      };
+      state.audioSource.connect(state.audioProcessor);
+      state.audioProcessor.connect(state.audioContext.destination);
+
+      state.ws.send(JSON.stringify({
+        type: "response.create",
+        response: {
+          instructions: "Greet the child warmly and ask one easy question about the anchor text."
+        }
+      }));
+
+      addMessage("system", "Realtime WebSocket session started.");
+      setCallState("Realtime tutor online", "Speak English directly. The tutor will stay anchored to the text.");
+      state.startedAt = Date.now();
+      state.timerId = setInterval(updateTimer, 1000);
+      updateTimer();
+    });
+
+    state.ws.addEventListener("message", (event) => handleRealtimeWebSocketEvent(event.data));
+    state.ws.addEventListener("error", () => {
+      setCallState("Realtime failed", "WebSocket connection error.");
+    });
+    state.ws.addEventListener("close", () => {
+      if (state.active) setCallState("Realtime closed", "The realtime connection closed.");
+    });
+  } catch (error) {
+    setCallState("Realtime failed", error.message);
+    await cleanupRealtimeWebSocket(false);
+  }
+}
+
+function handleRealtimeWebSocketEvent(rawData) {
+  let data;
+  try {
+    data = JSON.parse(rawData);
+  } catch {
+    return;
+  }
+
+  if (data.type === "response.audio.delta" && data.delta) playPcm16Base64(data.delta);
+  if (data.type === "response.output_audio.delta" && data.delta) playPcm16Base64(data.delta);
+  if (data.type === "conversation.item.input_audio_transcription.completed") addMessage("child", data.transcript || "");
+  if (data.type === "response.audio_transcript.done") addMessage("assistant", data.transcript || "");
+  if (data.type === "response.output_text.done") addMessage("assistant", data.text || "");
+  if (data.type === "error" || data.type === "proxy.error") {
+    const message = data.error?.message || "Realtime error.";
+    addMessage("system", message);
+    setCallState("Realtime failed", message);
+  }
+  if (data.type === "proxy.close") {
+    addMessage("system", `Realtime proxy closed: ${data.reason || data.code || ""}`);
+  }
+}
+
+async function cleanupRealtimeWebSocket(keepStopDisabled = true) {
+  stopTimerOnly();
+  if (state.audioProcessor) state.audioProcessor.disconnect();
+  if (state.audioSource) state.audioSource.disconnect();
+  if (state.localStream) {
+    for (const track of state.localStream.getTracks()) track.stop();
+  }
+  if (state.ws && state.ws.readyState === WebSocket.OPEN) state.ws.close();
+  if (state.audioContext) await state.audioContext.close().catch(() => {});
+  state.audioProcessor = null;
+  state.audioSource = null;
+  state.localStream = null;
+  state.audioContext = null;
+  state.ws = null;
+  els.startBtn.disabled = false;
+  els.stopBtn.disabled = keepStopDisabled;
+}
+
 async function sendAnswer() {
   const text = els.childMessage.value.trim();
   if (!text || !state.active) return;
@@ -403,7 +592,11 @@ async function stopPractice() {
   els.stopBtn.disabled = true;
   els.sendBtn.disabled = true;
   if (state.config?.mode === "realtime") {
-    await cleanupRealtime(true);
+    if (state.config?.realtimeTransport === "websocket") {
+      await cleanupRealtimeWebSocket(true);
+    } else {
+      await cleanupRealtime(true);
+    }
   } else {
     stopTimerOnly();
   }

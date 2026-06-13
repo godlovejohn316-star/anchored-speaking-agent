@@ -19,6 +19,8 @@ services:
         value: https://api.zyaihub.com/v1
       - key: OPENAI_REALTIME_MODEL
         value: gpt-realtime-2
+      - key: OPENAI_REALTIME_TRANSPORT
+        value: websocket
       - key: OPENAI_REALTIME_SESSION_MODE
         value: sdp-proxy
       - key: OPENAI_TEXT_MODEL
