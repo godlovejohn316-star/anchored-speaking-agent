@@ -306,6 +306,10 @@ async function startRealtimePractice() {
 
     const offer = await state.pc.createOffer();
     await state.pc.setLocalDescription(offer);
+    const localSdp = state.pc.localDescription?.sdp || offer.sdp || "";
+    if (!localSdp.trim()) {
+      throw new Error("Browser did not create a valid WebRTC SDP offer. Please allow microphone access and try again.");
+    }
 
     let answerSdp = "";
     if (session.sdpProxyUrl) {
@@ -313,7 +317,7 @@ async function startRealtimePractice() {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          sdp: offer.sdp,
+          sdp: localSdp,
           sessionConfig: session.sessionConfig,
           child: {
             id: els.childName.value.trim().toLowerCase() || "anonymous",
@@ -339,7 +343,7 @@ async function startRealtimePractice() {
           authorization: `Bearer ${ephemeralKey}`,
           "content-type": "application/sdp"
         },
-        body: offer.sdp
+        body: localSdp
       });
       answerSdp = await sdpRes.text();
       if (!sdpRes.ok) throw new Error(answerSdp || "Realtime WebRTC connection failed.");

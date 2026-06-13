@@ -108,6 +108,10 @@ function cleanString(value, fallback = "") {
   return String(value || fallback).trim().slice(0, 6000);
 }
 
+function cleanSdp(value) {
+  return String(value || "").trim();
+}
+
 function createSafetyIdentifier(value) {
   return crypto.createHash("sha256").update(String(value || "anonymous")).digest("hex").slice(0, 32);
 }
@@ -247,7 +251,7 @@ async function exchangeRealtimeCall(payload) {
     throw error;
   }
 
-  const offerSdp = cleanString(payload.sdp);
+  const offerSdp = cleanSdp(payload.sdp);
   if (!offerSdp) {
     const error = new Error("Missing SDP offer.");
     error.status = 400;
@@ -299,7 +303,7 @@ async function exchangeRealtimeSdp(payload) {
     throw error;
   }
 
-  const offerSdp = cleanString(payload.sdp);
+  const offerSdp = cleanSdp(payload.sdp);
   if (!offerSdp) {
     const error = new Error("Missing SDP offer.");
     error.status = 400;
@@ -562,7 +566,7 @@ const server = http.createServer(async (req, res) => {
         realtimeSessionMode: OPENAI_REALTIME_SESSION_MODE,
         realtimeTransport: OPENAI_REALTIME_TRANSPORT,
         realtimeWsUrlConfigured: Boolean(OPENAI_REALTIME_WS_URL),
-        appVersion: "openai-calls-realtime-20260613-3"
+        appVersion: "openai-calls-realtime-20260613-4"
       });
     }
 
