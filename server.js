@@ -461,7 +461,7 @@ function serveStatic(req, res) {
     const ext = path.extname(requestedPath);
     res.writeHead(200, {
       "content-type": mimeTypes[ext] || "application/octet-stream",
-      "cache-control": ext === ".html" ? "no-store" : "public, max-age=3600"
+      "cache-control": "no-store"
     });
     res.end(data);
   });
