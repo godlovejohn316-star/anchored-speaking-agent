@@ -20,6 +20,7 @@ const OPENAI_REALTIME_MODEL = process.env.OPENAI_REALTIME_MODEL || "gpt-realtime
 const OPENAI_TEXT_MODEL = process.env.OPENAI_TEXT_MODEL || "gpt-4o-mini";
 const OPENAI_VOICE = process.env.OPENAI_VOICE || "alloy";
 const MAX_MINUTES = Number(process.env.PRACTICE_MAX_MINUTES || 8);
+const REALTIME_VOICES = ["alloy", "verse", "aria", "coral", "sage", "shimmer"];
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -151,6 +152,7 @@ async function createRealtimeSession(payload) {
 
   const instructions = buildTutorInstructions(payload);
   const safetyIdentifier = createSafetyIdentifier(payload?.child?.id || payload?.child?.name || "anonymous");
+  const requestedVoice = REALTIME_VOICES.includes(payload.voice) ? payload.voice : OPENAI_VOICE;
 
   const response = await fetch(`${OPENAI_API_BASE}/realtime/sessions`, {
     method: "POST",
@@ -161,7 +163,7 @@ async function createRealtimeSession(payload) {
     },
     body: JSON.stringify({
       model: OPENAI_REALTIME_MODEL,
-      voice: payload.voice || OPENAI_VOICE,
+      voice: requestedVoice,
       instructions,
       modalities: ["audio", "text"],
       input_audio_transcription: {
@@ -196,13 +198,23 @@ async function createRealtimeSession(payload) {
   return {
     id: data.id,
     model: OPENAI_REALTIME_MODEL,
-    voice: payload.voice || OPENAI_VOICE,
+    voice: requestedVoice,
     realtimeUrl: `${OPENAI_API_BASE}/realtime?model=${encodeURIComponent(OPENAI_REALTIME_MODEL)}`,
     client_secret: data.client_secret
   };
 }
 
 function getChatProviderConfig() {
+  if (AI_PROVIDER === "openai-realtime") {
+    return {
+      provider: AI_PROVIDER,
+      apiKey: OPENAI_API_KEY,
+      apiBase: OPENAI_API_BASE,
+      model: OPENAI_TEXT_MODEL,
+      missingKeyMessage: "OPENAI_API_KEY is not configured."
+    };
+  }
+
   if (AI_PROVIDER === "openai-compatible") {
     return {
       provider: AI_PROVIDER,
@@ -421,7 +433,9 @@ const server = http.createServer(async (req, res) => {
         model: realtimeMode ? OPENAI_REALTIME_MODEL : providerConfig?.model,
         maxMinutes: MAX_MINUTES,
         configured: realtimeMode ? Boolean(OPENAI_API_KEY) : Boolean(providerConfig?.apiKey),
-        mode: realtimeMode ? "realtime" : "domestic-text"
+        mode: realtimeMode ? "realtime" : "domestic-text",
+        voices: REALTIME_VOICES,
+        defaultVoice: OPENAI_VOICE
       });
     }
 

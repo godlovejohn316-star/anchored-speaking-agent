@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -12,12 +12,12 @@
         <div class="brand-row">
           <div>
             <p class="eyebrow">Anchored Speaking</p>
-            <h1>锚定文本口语练习</h1>
+            <h1>Text-Anchored Speaking Practice</h1>
           </div>
-          <span id="apiStatus" class="status-pill">检查中</span>
+          <span id="apiStatus" class="status-pill">Checking</span>
         </div>
 
-        <label class="field-label" for="lessonSelect">练习文本</label>
+        <label class="field-label" for="lessonSelect">Practice Text</label>
         <select id="lessonSelect" class="input"></select>
 
         <div class="anchor-box">
@@ -26,19 +26,19 @@
               <h2 id="lessonTitle">Loading...</h2>
               <span id="lessonLevel" class="level-pill"></span>
             </div>
-            <button id="editLessonBtn" class="ghost-btn" type="button">编辑文本</button>
+            <button id="editLessonBtn" class="ghost-btn" type="button">Edit</button>
           </div>
           <textarea id="anchorText" class="anchor-text" rows="9"></textarea>
         </div>
 
         <div class="keyword-section">
-          <label class="field-label" for="keywordInput">关键词</label>
+          <label class="field-label" for="keywordInput">Keywords</label>
           <input id="keywordInput" class="input" placeholder="puppy, school gate, owner" />
           <div id="keywordChips" class="chips"></div>
         </div>
 
         <div class="patterns">
-          <label class="field-label" for="patternsInput">目标句型</label>
+          <label class="field-label" for="patternsInput">Target Sentence Patterns</label>
           <textarea id="patternsInput" class="input small-area" rows="3"></textarea>
         </div>
       </section>
@@ -55,30 +55,42 @@
         <div class="role-grid" id="roleGrid"></div>
 
         <div class="child-row">
-          <label class="field-label" for="childName">孩子名字</label>
+          <label class="field-label" for="childName">Child Name</label>
           <input id="childName" class="input" value="Alex" maxlength="40" />
+        </div>
+
+        <div class="voice-row">
+          <label class="field-label" for="voiceSelect">Tutor Voice</label>
+          <select id="voiceSelect" class="input">
+            <option value="alloy">Alloy - balanced</option>
+            <option value="verse">Verse - bright</option>
+            <option value="aria">Aria - clear</option>
+            <option value="coral">Coral - warm</option>
+            <option value="sage">Sage - calm</option>
+            <option value="shimmer">Shimmer - gentle</option>
+          </select>
         </div>
 
         <div class="call-zone">
           <div class="avatar" id="avatar">E</div>
           <div class="call-copy">
-            <h3 id="callState">准备开始</h3>
-            <p id="callHint">选择文本和角色后，点击开始。AI 会围绕锚定文本提问，并朗读回复。</p>
+            <h3 id="callState">Ready</h3>
+            <p id="callHint">Choose a text, role, and voice. Then start a realtime speaking session.</p>
           </div>
         </div>
 
         <div class="answer-box">
-          <label class="field-label" for="childMessage">孩子回答</label>
+          <label class="field-label" for="childMessage">Child Answer</label>
           <textarea id="childMessage" class="input answer-input" rows="4" placeholder="Type your answer in English..."></textarea>
           <div class="answer-actions">
-            <button id="listenBtn" class="ghost-btn" type="button">浏览器听写</button>
-            <button id="sendBtn" class="primary-btn" type="button" disabled>发送回答</button>
+            <button id="listenBtn" class="ghost-btn" type="button">Browser Dictation</button>
+            <button id="sendBtn" class="primary-btn" type="button" disabled>Send</button>
           </div>
         </div>
 
         <div class="controls">
-          <button id="startBtn" class="primary-btn" type="button">开始练习</button>
-          <button id="stopBtn" class="danger-btn" type="button" disabled>结束并生成报告</button>
+          <button id="startBtn" class="primary-btn" type="button">Start Realtime Speaking</button>
+          <button id="stopBtn" class="danger-btn" type="button" disabled>Finish and Report</button>
         </div>
 
         <audio id="remoteAudio" autoplay></audio>
@@ -86,8 +98,8 @@
 
       <section class="insight-panel">
         <div class="tabs">
-          <button class="tab active" data-tab="transcript" type="button">实时记录</button>
-          <button class="tab" data-tab="report" type="button">练习报告</button>
+          <button class="tab active" data-tab="transcript" type="button">Transcript</button>
+          <button class="tab" data-tab="report" type="button">Report</button>
         </div>
 
         <div id="transcriptView" class="tab-view active">
@@ -95,7 +107,7 @@
         </div>
 
         <div id="reportView" class="tab-view">
-          <div id="report" class="report-empty">完成一次练习后，这里会生成复盘建议。</div>
+          <div id="report" class="report-empty">Finish a practice session to generate a speaking report.</div>
         </div>
       </section>
     </main>

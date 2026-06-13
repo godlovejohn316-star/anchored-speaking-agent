@@ -53,6 +53,7 @@ const els = {
   roleName: document.querySelector("#roleName"),
   avatar: document.querySelector("#avatar"),
   childName: document.querySelector("#childName"),
+  voiceSelect: document.querySelector("#voiceSelect"),
   answerBox: document.querySelector(".answer-box"),
   childMessage: document.querySelector("#childMessage"),
   listenBtn: document.querySelector("#listenBtn"),
@@ -250,6 +251,7 @@ async function startRealtimePractice() {
       body: JSON.stringify({
         lesson,
         role: state.selectedRole,
+        voice: els.voiceSelect.value,
         child: {
           id: els.childName.value.trim().toLowerCase() || "anonymous",
           name: els.childName.value.trim() || "the learner"
@@ -476,10 +478,12 @@ async function loadInitialData() {
   setApiStatus(config);
   if (config.mode === "realtime") {
     els.answerBox.style.display = "none";
+    els.voiceSelect.disabled = false;
     els.startBtn.textContent = "Start realtime speaking";
     setCallState("Realtime mode", "Click start, allow microphone access, and speak with the tutor.");
   } else {
     els.answerBox.style.display = "";
+    els.voiceSelect.disabled = true;
     els.startBtn.textContent = "Start practice";
     setCallState("Text mode", "Type or dictate an English answer, then let the tutor reply.");
   }
