@@ -19,6 +19,7 @@ const OPENAI_API_BASE = (process.env.OPENAI_API_BASE || "https://api.openai.com/
 const OPENAI_REALTIME_MODEL = process.env.OPENAI_REALTIME_MODEL || "gpt-realtime-2";
 const OPENAI_TEXT_MODEL = process.env.OPENAI_TEXT_MODEL || "gpt-4o-mini";
 const OPENAI_VOICE = process.env.OPENAI_VOICE || "alloy";
+const OPENAI_REALTIME_SESSION_MODE = process.env.OPENAI_REALTIME_SESSION_MODE || "sdp-proxy";
 const MAX_MINUTES = Number(process.env.PRACTICE_MAX_MINUTES || 8);
 const REALTIME_VOICES = ["alloy", "verse", "aria", "coral", "sage", "shimmer"];
 
@@ -153,6 +154,39 @@ async function createRealtimeSession(payload) {
   const instructions = buildTutorInstructions(payload);
   const safetyIdentifier = createSafetyIdentifier(payload?.child?.id || payload?.child?.name || "anonymous");
   const requestedVoice = REALTIME_VOICES.includes(payload.voice) ? payload.voice : OPENAI_VOICE;
+  const sessionConfig = {
+    instructions,
+    voice: requestedVoice,
+    input_audio_transcription: {
+      model: "gpt-4o-mini-transcribe"
+    },
+    turn_detection: {
+      type: "server_vad",
+      threshold: 0.5,
+      prefix_padding_ms: 300,
+      silence_duration_ms: 650
+    }
+  };
+
+  if (OPENAI_REALTIME_SESSION_MODE === "sdp-proxy") {
+    appendJsonl("sessions.jsonl", {
+      id: `proxy-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+      mode: OPENAI_REALTIME_SESSION_MODE,
+      model: OPENAI_REALTIME_MODEL,
+      lessonTitle: payload?.lesson?.title,
+      roleName: payload?.role?.name,
+      safetyIdentifier
+    });
+
+    return {
+      id: `proxy-${Date.now()}`,
+      model: OPENAI_REALTIME_MODEL,
+      voice: requestedVoice,
+      sdpProxyUrl: "/api/realtime/sdp",
+      sessionConfig
+    };
+  }
 
   const response = await fetch(`${OPENAI_API_BASE}/realtime/sessions`, {
     method: "POST",
@@ -166,15 +200,8 @@ async function createRealtimeSession(payload) {
       voice: requestedVoice,
       instructions,
       modalities: ["audio", "text"],
-      input_audio_transcription: {
-        model: "gpt-4o-mini-transcribe"
-      },
-      turn_detection: {
-        type: "server_vad",
-        threshold: 0.5,
-        prefix_padding_ms: 300,
-        silence_duration_ms: 650
-      }
+      input_audio_transcription: sessionConfig.input_audio_transcription,
+      turn_detection: sessionConfig.turn_detection
     })
   });
 
@@ -201,6 +228,41 @@ async function createRealtimeSession(payload) {
     voice: requestedVoice,
     realtimeUrl: `${OPENAI_API_BASE}/realtime?model=${encodeURIComponent(OPENAI_REALTIME_MODEL)}`,
     client_secret: data.client_secret
+  };
+}
+
+async function exchangeRealtimeSdp(payload) {
+  if (!OPENAI_API_KEY) {
+    const error = new Error("OPENAI_API_KEY is not configured for realtime mode.");
+    error.status = 500;
+    throw error;
+  }
+
+  const offerSdp = cleanString(payload.sdp);
+  if (!offerSdp) {
+    const error = new Error("Missing SDP offer.");
+    error.status = 400;
+    throw error;
+  }
+
+  const response = await fetch(`${OPENAI_API_BASE}/realtime?model=${encodeURIComponent(OPENAI_REALTIME_MODEL)}`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${OPENAI_API_KEY}`,
+      "content-type": "application/sdp"
+    },
+    body: offerSdp
+  });
+
+  const answerSdp = await response.text();
+  if (!response.ok) {
+    const error = new Error(answerSdp || "Realtime SDP exchange failed.");
+    error.status = response.status;
+    throw error;
+  }
+
+  return {
+    sdp: answerSdp
   };
 }
 
@@ -435,7 +497,8 @@ const server = http.createServer(async (req, res) => {
         configured: realtimeMode ? Boolean(OPENAI_API_KEY) : Boolean(providerConfig?.apiKey),
         mode: realtimeMode ? "realtime" : "domestic-text",
         voices: REALTIME_VOICES,
-        defaultVoice: OPENAI_VOICE
+        defaultVoice: OPENAI_VOICE,
+        realtimeSessionMode: OPENAI_REALTIME_SESSION_MODE
       });
     }
 
@@ -443,6 +506,12 @@ const server = http.createServer(async (req, res) => {
       const payload = await readBody(req);
       const session = await createRealtimeSession(payload);
       return sendJson(res, 200, session);
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/realtime/sdp") {
+      const payload = await readBody(req);
+      const answer = await exchangeRealtimeSdp(payload);
+      return sendJson(res, 200, answer);
     }
 
     if (req.method === "POST" && url.pathname === "/api/chat") {

@@ -262,7 +262,7 @@ async function startRealtimePractice() {
     if (!sessionRes.ok) throw new Error(session.error || "Failed to create realtime session.");
 
     const ephemeralKey = getEphemeralKey(session);
-    if (!ephemeralKey) throw new Error("Realtime session did not include a client secret.");
+    if (!ephemeralKey && !session.sdpProxyUrl) throw new Error("Realtime session did not include a client secret.");
 
     state.pc = new RTCPeerConnection();
     state.pc.ontrack = (event) => {
@@ -279,6 +279,17 @@ async function startRealtimePractice() {
     state.dc.addEventListener("open", () => {
       setCallState("Realtime tutor online", "Speak English directly. The tutor will stay anchored to the text.");
       addMessage("system", "Realtime session started.");
+      if (session.sessionConfig) {
+        state.dc.send(JSON.stringify({
+          type: "session.update",
+          session: {
+            instructions: session.sessionConfig.instructions,
+            voice: session.sessionConfig.voice,
+            input_audio_transcription: session.sessionConfig.input_audio_transcription,
+            turn_detection: session.sessionConfig.turn_detection
+          }
+        }));
+      }
       state.dc.send(JSON.stringify({
         type: "response.create",
         response: {
@@ -291,16 +302,28 @@ async function startRealtimePractice() {
     const offer = await state.pc.createOffer();
     await state.pc.setLocalDescription(offer);
 
-    const sdpRes = await fetch(session.realtimeUrl, {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${ephemeralKey}`,
-        "content-type": "application/sdp"
-      },
-      body: offer.sdp
-    });
-    const answerSdp = await sdpRes.text();
-    if (!sdpRes.ok) throw new Error(answerSdp || "Realtime WebRTC connection failed.");
+    let answerSdp = "";
+    if (session.sdpProxyUrl) {
+      const sdpRes = await fetch(session.sdpProxyUrl, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ sdp: offer.sdp })
+      });
+      const sdpData = await sdpRes.json().catch(() => ({}));
+      if (!sdpRes.ok) throw new Error(sdpData.error || "Realtime WebRTC connection failed.");
+      answerSdp = sdpData.sdp;
+    } else {
+      const sdpRes = await fetch(session.realtimeUrl, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${ephemeralKey}`,
+          "content-type": "application/sdp"
+        },
+        body: offer.sdp
+      });
+      answerSdp = await sdpRes.text();
+      if (!sdpRes.ok) throw new Error(answerSdp || "Realtime WebRTC connection failed.");
+    }
 
     await state.pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
     state.startedAt = Date.now();
