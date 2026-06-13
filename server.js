@@ -128,9 +128,11 @@ function buildTutorInstructions(payload) {
   const roleName = cleanString(role.name, "Miss Emma").slice(0, 80);
   const roleStyle = cleanString(role.style, "warm, patient, encouraging").slice(0, 300);
   const childName = cleanString(child.name, "the learner").slice(0, 80);
+  const sessionId = cleanString(child.sessionId || "single-practice-session").slice(0, 120);
 
   return [
     `You are ${roleName}, an English speaking tutor for a child named ${childName}.`,
+    `This is one private practice session (${sessionId}). Do not use or mention any previous learner, classmate, or conversation.`,
     `Teaching style: ${roleStyle}.`,
     `The learner level is ${level}. Keep your spoken English natural, short, and age-appropriate.`,
     "",
@@ -164,7 +166,7 @@ async function createRealtimeSession(payload) {
   }
 
   const instructions = buildTutorInstructions(payload);
-  const safetyIdentifier = createSafetyIdentifier(payload?.child?.id || payload?.child?.name || "anonymous");
+  const safetyIdentifier = createSafetyIdentifier(`${payload?.child?.id || "anonymous"}:${payload?.child?.sessionId || "session"}`);
   const requestedVoice = REALTIME_VOICES.includes(payload.voice) ? payload.voice : OPENAI_VOICE;
   const sessionConfig = {
     type: "realtime",
@@ -274,7 +276,7 @@ async function exchangeRealtimeCall(payload) {
     method: "POST",
     headers: {
       authorization: `Bearer ${OPENAI_API_KEY}`,
-      "OpenAI-Safety-Identifier": createSafetyIdentifier(payload?.child?.id || payload?.child?.name || "anonymous")
+      "OpenAI-Safety-Identifier": createSafetyIdentifier(`${payload?.child?.id || "anonymous"}:${payload?.child?.sessionId || "session"}`)
     },
     body: fd
   });
@@ -567,7 +569,7 @@ const server = http.createServer(async (req, res) => {
         realtimeSessionMode: OPENAI_REALTIME_SESSION_MODE,
         realtimeTransport: OPENAI_REALTIME_TRANSPORT,
         realtimeWsUrlConfigured: Boolean(OPENAI_REALTIME_WS_URL),
-        appVersion: "openai-calls-realtime-20260613-6"
+        appVersion: "openai-calls-realtime-20260613-7"
       });
     }
 

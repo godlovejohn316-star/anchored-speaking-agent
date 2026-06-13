@@ -26,6 +26,8 @@ const roles = [
 ];
 
 const state = {
+  learnerId: "",
+  practiceSessionId: "",
   lessons: [],
   selectedLesson: null,
   selectedRole: roles[0],
@@ -44,6 +46,32 @@ const state = {
   active: false,
   recognition: null
 };
+
+function randomId(prefix) {
+  if (window.crypto?.randomUUID) return `${prefix}-${window.crypto.randomUUID()}`;
+  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function getLearnerId() {
+  const key = "anchored-speaking-agent.learnerId";
+  let id = "";
+  try {
+    id = localStorage.getItem(key) || "";
+    if (!id) {
+      id = randomId("learner");
+      localStorage.setItem(key, id);
+    }
+  } catch {
+    id = state.learnerId || randomId("learner");
+  }
+  state.learnerId = id;
+  return id;
+}
+
+function newPracticeSessionId() {
+  state.practiceSessionId = randomId("practice");
+  return state.practiceSessionId;
+}
 
 const els = {
   apiStatus: document.querySelector("#apiStatus"),
@@ -97,6 +125,15 @@ function currentLessonFromForm() {
     keywords,
     targetPatterns,
     discussionGoals: state.selectedLesson?.discussionGoals || []
+  };
+}
+
+function currentChild() {
+  const name = els.childName.value.trim() || "the learner";
+  return {
+    id: getLearnerId(),
+    sessionId: state.practiceSessionId || newPracticeSessionId(),
+    name
   };
 }
 
@@ -175,9 +212,7 @@ async function askTutor(message) {
     body: JSON.stringify({
       lesson,
       role: state.selectedRole,
-      child: {
-        name: els.childName.value.trim() || "the learner"
-      },
+      child: currentChild(),
       transcript: state.transcript,
       message
     })
@@ -202,6 +237,7 @@ async function startTextPractice() {
   }
 
   state.active = true;
+  newPracticeSessionId();
   state.transcript = [];
   els.transcript.innerHTML = "";
   els.report.className = "report-empty";
@@ -240,6 +276,7 @@ async function startRealtimePractice() {
   }
 
   state.active = true;
+  newPracticeSessionId();
   state.transcript = [];
   els.transcript.innerHTML = "";
   els.report.className = "report-empty";
@@ -257,10 +294,7 @@ async function startRealtimePractice() {
         lesson,
         role: state.selectedRole,
         voice: els.voiceSelect.value,
-        child: {
-          id: els.childName.value.trim().toLowerCase() || "anonymous",
-          name: els.childName.value.trim() || "the learner"
-        }
+        child: currentChild()
       })
     });
     const session = await sessionRes.json();
@@ -319,10 +353,7 @@ async function startRealtimePractice() {
         body: JSON.stringify({
           sdp: localSdp,
           sessionConfig: session.sessionConfig,
-          child: {
-            id: els.childName.value.trim().toLowerCase() || "anonymous",
-            name: els.childName.value.trim() || "the learner"
-          }
+          child: currentChild()
         })
       });
       const responseText = await sdpRes.text();
@@ -446,6 +477,7 @@ async function startRealtimeWebSocketPractice() {
   }
 
   state.active = true;
+  newPracticeSessionId();
   state.transcript = [];
   els.transcript.innerHTML = "";
   els.report.className = "report-empty";
@@ -463,10 +495,7 @@ async function startRealtimeWebSocketPractice() {
         lesson,
         role: state.selectedRole,
         voice: els.voiceSelect.value,
-        child: {
-          id: els.childName.value.trim().toLowerCase() || "anonymous",
-          name: els.childName.value.trim() || "the learner"
-        }
+        child: currentChild()
       })
     });
     const session = await sessionRes.json();
@@ -625,9 +654,7 @@ async function stopPractice() {
       body: JSON.stringify({
         lesson,
         role: state.selectedRole,
-        child: {
-          name: els.childName.value.trim() || "the learner"
-        },
+        child: currentChild(),
         transcript: state.transcript
       })
     });
@@ -697,6 +724,7 @@ function startDictation() {
 }
 
 async function loadInitialData() {
+  getLearnerId();
   renderRoles();
   const [configRes, lessonsRes] = await Promise.all([
     fetch("/api/config"),
