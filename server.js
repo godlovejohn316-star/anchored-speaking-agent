@@ -202,15 +202,40 @@ async function createRealtimeSession(payload) {
   };
 }
 
-async function callDomesticChat(payload) {
-  if (AI_PROVIDER !== "dashscope") {
+function getChatProviderConfig() {
+  if (AI_PROVIDER === "openai-compatible") {
+    return {
+      provider: AI_PROVIDER,
+      apiKey: OPENAI_API_KEY,
+      apiBase: OPENAI_API_BASE,
+      model: OPENAI_TEXT_MODEL,
+      missingKeyMessage: "OPENAI_API_KEY is not configured."
+    };
+  }
+
+  if (AI_PROVIDER === "dashscope") {
+    return {
+      provider: AI_PROVIDER,
+      apiKey: DASHSCOPE_API_KEY,
+      apiBase: DASHSCOPE_API_BASE.replace(/\/$/, ""),
+      model: DASHSCOPE_MODEL,
+      missingKeyMessage: "DASHSCOPE_API_KEY is not configured."
+    };
+  }
+
+  return null;
+}
+
+async function callCompatibleChat(payload) {
+  const providerConfig = getChatProviderConfig();
+  if (!providerConfig) {
     const error = new Error(`Unsupported AI_PROVIDER: ${AI_PROVIDER}`);
     error.status = 500;
     throw error;
   }
 
-  if (!DASHSCOPE_API_KEY) {
-    const error = new Error("DASHSCOPE_API_KEY is not configured.");
+  if (!providerConfig.apiKey) {
+    const error = new Error(providerConfig.missingKeyMessage);
     error.status = 500;
     throw error;
   }
@@ -228,14 +253,14 @@ async function callDomesticChat(payload) {
     { role: "user", content: cleanString(payload.message, "Please ask me a question about the text.").slice(0, 1200) }
   ];
 
-  const response = await fetch(`${DASHSCOPE_API_BASE.replace(/\/$/, "")}/chat/completions`, {
+  const response = await fetch(`${providerConfig.apiBase}/chat/completions`, {
     method: "POST",
     headers: {
-      authorization: `Bearer ${DASHSCOPE_API_KEY}`,
+      authorization: `Bearer ${providerConfig.apiKey}`,
       "content-type": "application/json"
     },
     body: JSON.stringify({
-      model: DASHSCOPE_MODEL,
+      model: providerConfig.model,
       messages,
       temperature: 0.7,
       max_tokens: 450
@@ -253,8 +278,8 @@ async function callDomesticChat(payload) {
   const text = data?.choices?.[0]?.message?.content || "";
   appendJsonl("chat.jsonl", {
     createdAt: new Date().toISOString(),
-    provider: AI_PROVIDER,
-    model: DASHSCOPE_MODEL,
+    provider: providerConfig.provider,
+    model: providerConfig.model,
     lessonTitle: payload?.lesson?.title,
     roleName: payload?.role?.name,
     childName: payload?.child?.name,
@@ -264,8 +289,8 @@ async function callDomesticChat(payload) {
 
   return {
     reply: text,
-    provider: AI_PROVIDER,
-    model: DASHSCOPE_MODEL
+    provider: providerConfig.provider,
+    model: providerConfig.model
   };
 }
 
@@ -300,16 +325,17 @@ function fallbackReport(payload) {
 }
 
 async function generateReport(payload) {
-  if (!DASHSCOPE_API_KEY) return fallbackReport(payload);
+  const providerConfig = getChatProviderConfig();
+  if (!providerConfig?.apiKey) return fallbackReport(payload);
 
-  const response = await fetch(`${DASHSCOPE_API_BASE.replace(/\/$/, "")}/chat/completions`, {
+  const response = await fetch(`${providerConfig.apiBase}/chat/completions`, {
     method: "POST",
     headers: {
-      authorization: `Bearer ${DASHSCOPE_API_KEY}`,
+      authorization: `Bearer ${providerConfig.apiKey}`,
       "content-type": "application/json"
     },
     body: JSON.stringify({
-      model: DASHSCOPE_MODEL,
+      model: providerConfig.model,
       messages: [
         {
           role: "system",
@@ -373,12 +399,13 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "GET" && url.pathname === "/api/health") {
       const realtimeMode = AI_PROVIDER === "openai-realtime";
+      const providerConfig = getChatProviderConfig();
       return sendJson(res, 200, {
         ok: true,
         service: "anchored-speaking-agent",
-        configured: realtimeMode ? Boolean(OPENAI_API_KEY) : Boolean(DASHSCOPE_API_KEY),
+        configured: realtimeMode ? Boolean(OPENAI_API_KEY) : Boolean(providerConfig?.apiKey),
         provider: AI_PROVIDER,
-        model: realtimeMode ? OPENAI_REALTIME_MODEL : DASHSCOPE_MODEL
+        model: realtimeMode ? OPENAI_REALTIME_MODEL : providerConfig?.model
       });
     }
 
@@ -388,11 +415,12 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "GET" && url.pathname === "/api/config") {
       const realtimeMode = AI_PROVIDER === "openai-realtime";
+      const providerConfig = getChatProviderConfig();
       return sendJson(res, 200, {
         provider: AI_PROVIDER,
-        model: realtimeMode ? OPENAI_REALTIME_MODEL : DASHSCOPE_MODEL,
+        model: realtimeMode ? OPENAI_REALTIME_MODEL : providerConfig?.model,
         maxMinutes: MAX_MINUTES,
-        configured: realtimeMode ? Boolean(OPENAI_API_KEY) : Boolean(DASHSCOPE_API_KEY),
+        configured: realtimeMode ? Boolean(OPENAI_API_KEY) : Boolean(providerConfig?.apiKey),
         mode: realtimeMode ? "realtime" : "domestic-text"
       });
     }
@@ -405,7 +433,7 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "POST" && url.pathname === "/api/chat") {
       const payload = await readBody(req);
-      const reply = await callDomesticChat(payload);
+      const reply = await callCompatibleChat(payload);
       return sendJson(res, 200, reply);
     }
 

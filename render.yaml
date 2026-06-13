@@ -12,16 +12,12 @@ services:
       - key: DATA_DIR
         value: /tmp/anchored-speaking-agent
       - key: AI_PROVIDER
-        value: openai-realtime
+        value: openai-compatible
       - key: OPENAI_API_KEY
         sync: false
       - key: OPENAI_API_BASE
-        sync: false
-      - key: OPENAI_REALTIME_MODEL
-        value: gpt-realtime-2
+        value: https://api.zyaihub.com/v1
       - key: OPENAI_TEXT_MODEL
-        value: gpt-4o-mini
-      - key: OPENAI_VOICE
-        value: alloy
+        value: gpt-4o
       - key: PRACTICE_MAX_MINUTES
         value: 8

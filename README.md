@@ -57,6 +57,25 @@ PowerShell 如果禁止 `npm.ps1`，请使用 `npm.cmd`。
 - 默认不保存原始音频，只保存必要的文字记录和报告。
 - 上线前应增加账号体系、家长/教师管理、内容审核和成本限额。
 
+## 中转 API 文字版测试
+
+如果使用 `https://api.zyaihub.com/v1` 这类 OpenAI 兼容中转，先用文字版测试最稳。Render 设置：
+
+```text
+AI_PROVIDER=openai-compatible
+OPENAI_API_KEY=对方平台颁发的 sk-... 令牌
+OPENAI_API_BASE=https://api.zyaihub.com/v1
+OPENAI_TEXT_MODEL=gpt-4o
+```
+
+这个模式调用：
+
+```text
+POST /v1/chat/completions
+```
+
+页面仍会用浏览器内置朗读功能播放 AI 外教回复。
+
 ## Realtime 中转测试
 
 如果使用别人提供的 OpenAI Realtime 兼容中转，请在 Render 设置：
