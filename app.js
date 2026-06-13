@@ -321,8 +321,16 @@ async function startRealtimePractice() {
           }
         })
       });
-      const sdpData = await sdpRes.json().catch(() => ({}));
-      if (!sdpRes.ok) throw new Error(sdpData.error || "Realtime WebRTC call exchange failed.");
+      const responseText = await sdpRes.text();
+      let sdpData = {};
+      try {
+        sdpData = JSON.parse(responseText);
+      } catch {
+        sdpData = {};
+      }
+      if (!sdpRes.ok) {
+        throw new Error(sdpData.error || responseText || `Realtime WebRTC call exchange failed. HTTP ${sdpRes.status}`);
+      }
       answerSdp = sdpData.sdp;
     } else {
       const sdpRes = await fetch(session.realtimeUrl, {

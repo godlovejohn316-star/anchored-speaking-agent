@@ -276,7 +276,13 @@ async function exchangeRealtimeCall(payload) {
 
   const answerSdp = await response.text();
   if (!response.ok) {
-    console.error(`Realtime call exchange failed: ${response.status} ${answerSdp}`);
+    console.error("Realtime call exchange failed", {
+      status: response.status,
+      statusText: response.statusText,
+      body: answerSdp,
+      model: sessionConfig.model || OPENAI_REALTIME_MODEL,
+      voice: sessionConfig.audio?.output?.voice
+    });
     const error = new Error(answerSdp || "Realtime call exchange failed.");
     error.status = response.status;
     throw error;
@@ -556,7 +562,7 @@ const server = http.createServer(async (req, res) => {
         realtimeSessionMode: OPENAI_REALTIME_SESSION_MODE,
         realtimeTransport: OPENAI_REALTIME_TRANSPORT,
         realtimeWsUrlConfigured: Boolean(OPENAI_REALTIME_WS_URL),
-        appVersion: "openai-calls-realtime-20260613-1"
+        appVersion: "openai-calls-realtime-20260613-3"
       });
     }
 
@@ -569,6 +575,12 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/api/realtime/sdp") {
       const payload = await readBody(req);
       const answer = await exchangeRealtimeSdp(payload);
+      return sendJson(res, 200, answer);
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/realtime/call") {
+      const payload = await readBody(req);
+      const answer = await exchangeRealtimeCall(payload);
       return sendJson(res, 200, answer);
     }
 
