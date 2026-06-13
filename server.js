@@ -501,7 +501,8 @@ const server = http.createServer(async (req, res) => {
         voices: REALTIME_VOICES,
         defaultVoice: OPENAI_VOICE,
         realtimeSessionMode: OPENAI_REALTIME_SESSION_MODE,
-        realtimeTransport: OPENAI_REALTIME_TRANSPORT
+        realtimeTransport: OPENAI_REALTIME_TRANSPORT,
+        appVersion: "websocket-realtime-20260613-2"
       });
     }
 
