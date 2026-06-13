@@ -177,7 +177,7 @@ async function createRealtimeSession(payload) {
     }
   };
 
-  if (OPENAI_REALTIME_SESSION_MODE === "calls") {
+  if (OPENAI_REALTIME_SESSION_MODE === "server-call-proxy") {
     console.log(`Creating realtime call config for model=${OPENAI_REALTIME_MODEL}, voice=${requestedVoice}`);
     return {
       id: `call-${Date.now()}`,
@@ -567,7 +567,7 @@ const server = http.createServer(async (req, res) => {
         realtimeSessionMode: OPENAI_REALTIME_SESSION_MODE,
         realtimeTransport: OPENAI_REALTIME_TRANSPORT,
         realtimeWsUrlConfigured: Boolean(OPENAI_REALTIME_WS_URL),
-        appVersion: "openai-calls-realtime-20260613-5"
+        appVersion: "openai-calls-realtime-20260613-6"
       });
     }
 
