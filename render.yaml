@@ -16,17 +16,15 @@ services:
       - key: OPENAI_API_KEY
         sync: false
       - key: OPENAI_API_BASE
-        value: https://api.zyaihub.com/v1
+        value: https://api.openai.com/v1
       - key: OPENAI_REALTIME_MODEL
         value: gpt-realtime-2
       - key: OPENAI_REALTIME_TRANSPORT
-        value: websocket
-      - key: OPENAI_REALTIME_WS_URL
-        sync: false
+        value: webrtc
       - key: OPENAI_REALTIME_SESSION_MODE
-        value: sdp-proxy
+        value: sessions
       - key: OPENAI_TEXT_MODEL
-        value: gpt-4o
+        value: gpt-4o-mini
       - key: OPENAI_VOICE
         value: alloy
       - key: PRACTICE_MAX_MINUTES

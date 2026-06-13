@@ -189,9 +189,6 @@ async function askTutor(message) {
 
 async function startPractice() {
   if (state.config?.mode === "realtime") {
-    if (state.config?.realtimeTransport !== "webrtc") {
-      return startRealtimeWebSocketPractice();
-    }
     return startRealtimePractice();
   }
   return startTextPractice();
@@ -594,11 +591,7 @@ async function stopPractice() {
   els.stopBtn.disabled = true;
   els.sendBtn.disabled = true;
   if (state.config?.mode === "realtime") {
-    if (state.config?.realtimeTransport === "websocket") {
-      await cleanupRealtimeWebSocket(true);
-    } else {
-      await cleanupRealtime(true);
-    }
+    await cleanupRealtime(true);
   } else {
     stopTimerOnly();
   }
@@ -694,12 +687,7 @@ async function loadInitialData() {
   const lessonsData = await lessonsRes.json();
   state.config = config;
   setApiStatus(config);
-  if (config.mode === "realtime" && config.realtimeTransport !== "webrtc") {
-    els.answerBox.style.display = "none";
-    els.voiceSelect.disabled = false;
-    els.startBtn.textContent = "Start realtime speaking";
-    setCallState("Realtime mode", "Click start, allow microphone access, and speak with the tutor.");
-  } else if (config.mode === "realtime") {
+  if (config.mode === "realtime") {
     els.answerBox.style.display = "none";
     els.voiceSelect.disabled = false;
     els.startBtn.textContent = "Start realtime speaking";

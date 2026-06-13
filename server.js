@@ -2,7 +2,12 @@ const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
-const WebSocket = require("ws");
+let WebSocket = null;
+try {
+  WebSocket = require("ws");
+} catch {
+  WebSocket = null;
+}
 
 loadEnvFile(path.join(__dirname, ".env"));
 
@@ -20,8 +25,8 @@ const OPENAI_API_BASE = (process.env.OPENAI_API_BASE || "https://api.openai.com/
 const OPENAI_REALTIME_MODEL = process.env.OPENAI_REALTIME_MODEL || "gpt-realtime-2";
 const OPENAI_TEXT_MODEL = process.env.OPENAI_TEXT_MODEL || "gpt-4o-mini";
 const OPENAI_VOICE = process.env.OPENAI_VOICE || "alloy";
-const OPENAI_REALTIME_SESSION_MODE = process.env.OPENAI_REALTIME_SESSION_MODE || "sdp-proxy";
-const OPENAI_REALTIME_TRANSPORT = process.env.OPENAI_REALTIME_TRANSPORT || "websocket";
+const OPENAI_REALTIME_SESSION_MODE = process.env.OPENAI_REALTIME_SESSION_MODE || "sessions";
+const OPENAI_REALTIME_TRANSPORT = process.env.OPENAI_REALTIME_TRANSPORT || "webrtc";
 const OPENAI_REALTIME_WS_URL = process.env.OPENAI_REALTIME_WS_URL || "";
 const MAX_MINUTES = Number(process.env.PRACTICE_MAX_MINUTES || 8);
 const REALTIME_VOICES = ["alloy", "verse", "aria", "coral", "sage", "shimmer"];
@@ -504,7 +509,7 @@ const server = http.createServer(async (req, res) => {
         realtimeSessionMode: OPENAI_REALTIME_SESSION_MODE,
         realtimeTransport: OPENAI_REALTIME_TRANSPORT,
         realtimeWsUrlConfigured: Boolean(OPENAI_REALTIME_WS_URL),
-        appVersion: "websocket-realtime-20260613-3"
+        appVersion: "openai-webrtc-realtime-20260613-2"
       });
     }
 
@@ -563,67 +568,78 @@ server.listen(PORT, () => {
   console.log(`Anchored Speaking Agent running at http://localhost:${PORT}`);
 });
 
-const wss = new WebSocket.Server({ noServer: true });
+if (WebSocket) {
+  const wss = new WebSocket.Server({ noServer: true });
 
-server.on("upgrade", (req, socket, head) => {
-  const url = new URL(req.url, `http://${req.headers.host}`);
-  if (url.pathname !== "/api/realtime/ws") {
+  server.on("upgrade", (req, socket, head) => {
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    if (url.pathname !== "/api/realtime/ws") {
+      socket.destroy();
+      return;
+    }
+
+    wss.handleUpgrade(req, socket, head, (clientWs) => {
+      wss.emit("connection", clientWs, req);
+    });
+  });
+
+  wss.on("connection", (clientWs) => {
+    if (!OPENAI_API_KEY) {
+      clientWs.close(1011, "OPENAI_API_KEY is not configured.");
+      return;
+    }
+
+    const upstreamUrl = OPENAI_REALTIME_WS_URL ||
+      `${OPENAI_API_BASE.replace(/^http/, "ws")}/realtime?model=${encodeURIComponent(OPENAI_REALTIME_MODEL)}`;
+    console.log(`Opening realtime websocket upstream: ${upstreamUrl.replace(/key=[^&]+/i, "key=***")}`);
+    const upstreamWs = new WebSocket(upstreamUrl, {
+      headers: {
+        authorization: `Bearer ${OPENAI_API_KEY}`,
+        "OpenAI-Beta": "realtime=v1"
+      }
+    });
+
+    upstreamWs.on("open", () => {
+      console.log("Realtime websocket upstream opened.");
+      clientWs.send(JSON.stringify({ type: "proxy.open", model: OPENAI_REALTIME_MODEL }));
+    });
+
+    upstreamWs.on("message", (data) => {
+      if (clientWs.readyState === WebSocket.OPEN) clientWs.send(data);
+    });
+
+    upstreamWs.on("error", (error) => {
+      console.error("Realtime websocket upstream error:", error.message);
+      if (clientWs.readyState === WebSocket.OPEN) {
+        clientWs.send(JSON.stringify({ type: "proxy.error", error: { message: error.message } }));
+      }
+    });
+
+    upstreamWs.on("close", (code, reason) => {
+      console.log(`Realtime websocket upstream closed: ${code} ${reason.toString()}`);
+      if (clientWs.readyState === WebSocket.OPEN) {
+        clientWs.send(JSON.stringify({ type: "proxy.close", code, reason: reason.toString() }));
+        clientWs.close();
+      }
+    });
+
+    clientWs.on("message", (data) => {
+      if (upstreamWs.readyState === WebSocket.OPEN) upstreamWs.send(data);
+    });
+
+    clientWs.on("close", () => {
+      if (upstreamWs.readyState === WebSocket.OPEN || upstreamWs.readyState === WebSocket.CONNECTING) {
+        upstreamWs.close();
+      }
+    });
+  });
+} else {
+  server.on("upgrade", (req, socket) => {
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    if (url.pathname === "/api/realtime/ws") {
+      socket.destroy();
+      return;
+    }
     socket.destroy();
-    return;
-  }
-
-  wss.handleUpgrade(req, socket, head, (clientWs) => {
-    wss.emit("connection", clientWs, req);
   });
-});
-
-wss.on("connection", (clientWs) => {
-  if (!OPENAI_API_KEY) {
-    clientWs.close(1011, "OPENAI_API_KEY is not configured.");
-    return;
-  }
-
-  const upstreamUrl = OPENAI_REALTIME_WS_URL ||
-    `${OPENAI_API_BASE.replace(/^http/, "ws")}/realtime?model=${encodeURIComponent(OPENAI_REALTIME_MODEL)}`;
-  console.log(`Opening realtime websocket upstream: ${upstreamUrl.replace(/key=[^&]+/i, "key=***")}`);
-  const upstreamWs = new WebSocket(upstreamUrl, {
-    headers: {
-      authorization: `Bearer ${OPENAI_API_KEY}`,
-      "OpenAI-Beta": "realtime=v1"
-    }
-  });
-
-  upstreamWs.on("open", () => {
-    console.log("Realtime websocket upstream opened.");
-    clientWs.send(JSON.stringify({ type: "proxy.open", model: OPENAI_REALTIME_MODEL }));
-  });
-
-  upstreamWs.on("message", (data) => {
-    if (clientWs.readyState === WebSocket.OPEN) clientWs.send(data);
-  });
-
-  upstreamWs.on("error", (error) => {
-    console.error("Realtime websocket upstream error:", error.message);
-    if (clientWs.readyState === WebSocket.OPEN) {
-      clientWs.send(JSON.stringify({ type: "proxy.error", error: { message: error.message } }));
-    }
-  });
-
-  upstreamWs.on("close", (code, reason) => {
-    console.log(`Realtime websocket upstream closed: ${code} ${reason.toString()}`);
-    if (clientWs.readyState === WebSocket.OPEN) {
-      clientWs.send(JSON.stringify({ type: "proxy.close", code, reason: reason.toString() }));
-      clientWs.close();
-    }
-  });
-
-  clientWs.on("message", (data) => {
-    if (upstreamWs.readyState === WebSocket.OPEN) upstreamWs.send(data);
-  });
-
-  clientWs.on("close", () => {
-    if (upstreamWs.readyState === WebSocket.OPEN || upstreamWs.readyState === WebSocket.CONNECTING) {
-      upstreamWs.close();
-    }
-  });
-});
+}
