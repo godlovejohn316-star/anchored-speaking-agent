@@ -265,10 +265,11 @@ async function exchangeRealtimeCall(payload) {
   };
 
   const fd = new FormData();
+  fd.set("offer", offerSdp);
   fd.set("sdp", offerSdp);
   fd.set("session", JSON.stringify(sessionConfig));
 
-  console.log(`Exchanging realtime call SDP with OpenAI model=${sessionConfig.model || OPENAI_REALTIME_MODEL}`);
+  console.log(`Exchanging realtime call SDP with OpenAI model=${sessionConfig.model || OPENAI_REALTIME_MODEL}, sdpLength=${offerSdp.length}`);
   const response = await fetch(`${OPENAI_API_BASE}/realtime/calls`, {
     method: "POST",
     headers: {
@@ -566,7 +567,7 @@ const server = http.createServer(async (req, res) => {
         realtimeSessionMode: OPENAI_REALTIME_SESSION_MODE,
         realtimeTransport: OPENAI_REALTIME_TRANSPORT,
         realtimeWsUrlConfigured: Boolean(OPENAI_REALTIME_WS_URL),
-        appVersion: "openai-calls-realtime-20260613-4"
+        appVersion: "openai-calls-realtime-20260613-5"
       });
     }
 
