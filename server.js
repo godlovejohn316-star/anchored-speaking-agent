@@ -569,7 +569,7 @@ const server = http.createServer(async (req, res) => {
         realtimeSessionMode: OPENAI_REALTIME_SESSION_MODE,
         realtimeTransport: OPENAI_REALTIME_TRANSPORT,
         realtimeWsUrlConfigured: Boolean(OPENAI_REALTIME_WS_URL),
-        appVersion: "openai-calls-realtime-20260613-7"
+        appVersion: "openai-calls-realtime-20260613-8"
       });
     }
 

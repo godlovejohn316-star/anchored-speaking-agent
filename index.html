@@ -19,12 +19,19 @@
 
         <label class="field-label" for="lessonSelect">Practice Text</label>
         <select id="lessonSelect" class="input"></select>
+        <div class="lesson-actions">
+          <button id="customTextBtn" class="ghost-btn" type="button">Use my own text</button>
+          <button id="uploadTextBtn" class="ghost-btn" type="button">Upload .txt</button>
+          <input id="textFileInput" type="file" accept=".txt,text/plain" hidden />
+        </div>
 
         <div class="anchor-box">
           <div class="anchor-head">
-            <div>
-              <h2 id="lessonTitle">Loading...</h2>
-              <span id="lessonLevel" class="level-pill"></span>
+            <div class="lesson-meta">
+              <label class="field-label compact" for="lessonTitleInput">Title</label>
+              <input id="lessonTitleInput" class="input title-input" value="Loading..." maxlength="80" />
+              <label class="field-label compact" for="lessonLevelInput">Level</label>
+              <input id="lessonLevelInput" class="input level-input" value="A2" maxlength="12" />
             </div>
             <button id="editLessonBtn" class="ghost-btn" type="button">Edit</button>
           </div>
@@ -120,6 +127,6 @@
       </article>
     </template>
 
-    <script src="/app.js?v=openai-calls-realtime-20260613-7"></script>
+    <script src="/app.js?v=openai-calls-realtime-20260613-8"></script>
   </body>
 </html>

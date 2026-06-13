@@ -76,12 +76,15 @@ function newPracticeSessionId() {
 const els = {
   apiStatus: document.querySelector("#apiStatus"),
   lessonSelect: document.querySelector("#lessonSelect"),
-  lessonTitle: document.querySelector("#lessonTitle"),
-  lessonLevel: document.querySelector("#lessonLevel"),
+  lessonTitleInput: document.querySelector("#lessonTitleInput"),
+  lessonLevelInput: document.querySelector("#lessonLevelInput"),
   anchorText: document.querySelector("#anchorText"),
   keywordInput: document.querySelector("#keywordInput"),
   keywordChips: document.querySelector("#keywordChips"),
   patternsInput: document.querySelector("#patternsInput"),
+  customTextBtn: document.querySelector("#customTextBtn"),
+  uploadTextBtn: document.querySelector("#uploadTextBtn"),
+  textFileInput: document.querySelector("#textFileInput"),
   roleGrid: document.querySelector("#roleGrid"),
   roleName: document.querySelector("#roleName"),
   avatar: document.querySelector("#avatar"),
@@ -119,8 +122,8 @@ function currentLessonFromForm() {
   const targetPatterns = els.patternsInput.value.split("\n").map((item) => item.trim()).filter(Boolean);
   return {
     ...state.selectedLesson,
-    title: els.lessonTitle.textContent,
-    level: els.lessonLevel.textContent || "A2",
+    title: els.lessonTitleInput.value.trim() || "My Practice Text",
+    level: els.lessonLevelInput.value.trim() || "A2",
     text: els.anchorText.value.trim(),
     keywords,
     targetPatterns,
@@ -150,12 +153,79 @@ function renderKeywords() {
 
 function renderLesson(lesson) {
   state.selectedLesson = lesson;
-  els.lessonTitle.textContent = lesson.title;
-  els.lessonLevel.textContent = lesson.level;
+  els.lessonTitleInput.value = lesson.title || "My Practice Text";
+  els.lessonLevelInput.value = lesson.level || "A2";
   els.anchorText.value = lesson.text;
-  els.keywordInput.value = lesson.keywords.join(", ");
-  els.patternsInput.value = lesson.targetPatterns.join("\n");
+  els.keywordInput.value = (lesson.keywords || []).join(", ");
+  els.patternsInput.value = (lesson.targetPatterns || []).join("\n");
   renderKeywords();
+}
+
+function createCustomLesson(overrides = {}) {
+  return {
+    id: `custom-${Date.now()}`,
+    title: overrides.title || "My Practice Text",
+    level: overrides.level || "A2",
+    text: overrides.text || "",
+    keywords: overrides.keywords || [],
+    targetPatterns: overrides.targetPatterns || [],
+    discussionGoals: overrides.discussionGoals || []
+  };
+}
+
+function setCustomLesson(lesson) {
+  const customLesson = createCustomLesson(lesson);
+  state.selectedLesson = customLesson;
+  const existingIndex = state.lessons.findIndex((item) => item.id === "custom-current");
+  customLesson.id = "custom-current";
+  if (existingIndex >= 0) {
+    state.lessons[existingIndex] = customLesson;
+  } else {
+    state.lessons.unshift(customLesson);
+  }
+  els.lessonSelect.innerHTML = state.lessons.map((item) => `<option value="${item.id}">${escapeHtml(item.title)}</option>`).join("");
+  els.lessonSelect.value = customLesson.id;
+  renderLesson(customLesson);
+  els.anchorText.focus();
+}
+
+function syncCustomLessonFromForm() {
+  if (!state.selectedLesson || state.selectedLesson.id !== "custom-current") return;
+  const lesson = currentLessonFromForm();
+  state.selectedLesson = { ...state.selectedLesson, ...lesson, id: "custom-current" };
+  const customIndex = state.lessons.findIndex((item) => item.id === "custom-current");
+  if (customIndex >= 0) state.lessons[customIndex] = state.selectedLesson;
+  const option = [...els.lessonSelect.options].find((item) => item.value === "custom-current");
+  if (option) option.textContent = state.selectedLesson.title || "My Practice Text";
+}
+
+function ensureCustomLessonForEditing() {
+  if (state.selectedLesson?.id === "custom-current") {
+    syncCustomLessonFromForm();
+    return;
+  }
+  setCustomLesson(currentLessonFromForm());
+}
+
+function useCustomText() {
+  setCustomLesson({
+    title: "My Practice Text",
+    level: els.lessonLevelInput.value.trim() || "A2",
+    text: els.anchorText.value.trim()
+  });
+  setCallState("Custom text ready", "Paste or edit the anchor text, then start realtime speaking.");
+}
+
+async function importTextFile(file) {
+  if (!file) return;
+  const text = await file.text();
+  const title = file.name.replace(/\.[^.]+$/, "").trim() || "Uploaded Practice Text";
+  setCustomLesson({
+    title,
+    level: "A2",
+    text: text.trim()
+  });
+  setCallState("Uploaded text ready", "Review the anchor text, add keywords if useful, then start.");
 }
 
 function renderRoles() {
@@ -755,7 +825,20 @@ els.lessonSelect.addEventListener("change", () => {
   if (lesson) renderLesson(lesson);
 });
 
-els.keywordInput.addEventListener("input", renderKeywords);
+els.customTextBtn.addEventListener("click", useCustomText);
+els.uploadTextBtn.addEventListener("click", () => els.textFileInput.click());
+els.textFileInput.addEventListener("change", async () => {
+  await importTextFile(els.textFileInput.files?.[0]);
+  els.textFileInput.value = "";
+});
+els.lessonTitleInput.addEventListener("input", syncCustomLessonFromForm);
+els.lessonLevelInput.addEventListener("input", syncCustomLessonFromForm);
+els.anchorText.addEventListener("input", ensureCustomLessonForEditing);
+els.keywordInput.addEventListener("input", () => {
+  renderKeywords();
+  syncCustomLessonFromForm();
+});
+els.patternsInput.addEventListener("input", syncCustomLessonFromForm);
 els.startBtn.addEventListener("click", startPractice);
 els.stopBtn.addEventListener("click", stopPractice);
 els.sendBtn.addEventListener("click", sendAnswer);
