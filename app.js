@@ -117,6 +117,16 @@ function setApiStatus(config) {
   els.apiStatus.className = `status-pill ${config.configured ? "ok" : "warn"}`;
 }
 
+async function readJsonResponse(response, label) {
+  const text = await response.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    const preview = text.replace(/\s+/g, " ").slice(0, 160);
+    throw new Error(`${label} returned non-JSON response. HTTP ${response.status}. ${preview}`);
+  }
+}
+
 function currentLessonFromForm() {
   const keywords = els.keywordInput.value.split(",").map((item) => item.trim()).filter(Boolean);
   const targetPatterns = els.patternsInput.value.split("\n").map((item) => item.trim()).filter(Boolean);
@@ -278,6 +288,7 @@ async function askTutor(message) {
   const lesson = currentLessonFromForm();
   const res = await fetch("/api/chat", {
     method: "POST",
+    cache: "no-store",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       lesson,
@@ -287,7 +298,7 @@ async function askTutor(message) {
       message
     })
   });
-  const data = await res.json();
+  const data = await readJsonResponse(res, "/api/chat");
   if (!res.ok) throw new Error(data.error || "Tutor request failed.");
   return data.reply;
 }
@@ -359,6 +370,7 @@ async function startRealtimePractice() {
   try {
     const sessionRes = await fetch("/api/realtime/session", {
       method: "POST",
+      cache: "no-store",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         lesson,
@@ -367,7 +379,7 @@ async function startRealtimePractice() {
         child: currentChild()
       })
     });
-    const session = await sessionRes.json();
+    const session = await readJsonResponse(sessionRes, "/api/realtime/session");
     if (!sessionRes.ok) throw new Error(session.error || "Failed to create realtime session.");
 
     const ephemeralKey = getEphemeralKey(session);
@@ -560,6 +572,7 @@ async function startRealtimeWebSocketPractice() {
   try {
     const sessionRes = await fetch("/api/realtime/session", {
       method: "POST",
+      cache: "no-store",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         lesson,
@@ -568,7 +581,7 @@ async function startRealtimeWebSocketPractice() {
         child: currentChild()
       })
     });
-    const session = await sessionRes.json();
+    const session = await readJsonResponse(sessionRes, "/api/realtime/session");
     if (!sessionRes.ok) throw new Error(session.error || "Failed to create realtime session.");
 
     const wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
@@ -720,6 +733,7 @@ async function stopPractice() {
     const lesson = currentLessonFromForm();
     const res = await fetch("/api/report", {
       method: "POST",
+      cache: "no-store",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         lesson,
@@ -728,7 +742,7 @@ async function stopPractice() {
         transcript: state.transcript
       })
     });
-    const data = await res.json();
+    const data = await readJsonResponse(res, "/api/report");
     if (!res.ok) throw new Error(data.error || "Report request failed.");
     renderReport(data.report);
     switchTab("report");
@@ -797,11 +811,11 @@ async function loadInitialData() {
   getLearnerId();
   renderRoles();
   const [configRes, lessonsRes] = await Promise.all([
-    fetch("/api/config"),
-    fetch("/api/lessons")
+    fetch("/api/config", { cache: "no-store" }),
+    fetch("/api/lessons", { cache: "no-store" })
   ]);
-  const config = await configRes.json();
-  const lessonsData = await lessonsRes.json();
+  const config = await readJsonResponse(configRes, "/api/config");
+  const lessonsData = await readJsonResponse(lessonsRes, "/api/lessons");
   state.config = config;
   setApiStatus(config);
   if (config.mode === "realtime") {
